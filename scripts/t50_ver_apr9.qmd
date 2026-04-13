@@ -1,0 +1,699 @@
+---
+title: "T50 hot and cold"
+format: html
+editor: visual
+---
+
+### **LOADING LIBRARY**
+
+```{r}
+#| label: loading library
+#| message: false
+
+library(tidyverse)
+library(readxl)
+library(here)
+library(thermalTolerance) 
+
+# remember to re-install if Richard changes package, found on github, installed using: 
+# remotes::install_github("richardjtelford/thermalTolerance") 
+# this package estimates of 3 different PSII heat tolerance metrics, Tcrit, T50 and T95. Can take each individual nr plant into account, fits curves by randomly resampling for each individual by bootstrapping.
+```
+
+### CLEAN DATA IMPORT
+
+```{r}
+#| label: data import  
+#| message: false
+
+#data import of cleaned data
+
+clean_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Tolerance_Bente_Msc.csv"))
+
+view(clean_data) # check import 
+```
+
+#### Levels
+
+```{r}
+#| label: levels 
+#| message: false
+
+# setting levels for figures
+clean_data$age_class <- factor((clean_data$age_class),
+                         levels = c("Newly Burnt", "Pioneer", 
+                                    "Building", "Mature"))
+clean_data$month <- factor((clean_data$month),
+                     levels = c("November", "January"))
+
+```
+
+### HOT AND COLD SUBSETS
+
+```{r}
+#| label: subsetting  
+#| message: false
+
+# making hot subset all clean data
+hot_subset <- clean_data |> 
+  filter(proj_2025 == "TT Hot") |> # filter for TT Hot
+  filter(!is.na(fv_fm_final)) |>  # removing row with NA for fv_fm_final
+   select(month, age_class, plant_nr, temp_exp, fv_fm_final)
+
+
+# making cold subset all clean data
+cold_subset <- clean_data |> 
+  filter(proj_2025 == "TT Cold")|> # filter for TT Cold 
+  filter(!is.na(fv_fm_final)) |>  # removing row with NA for fv_fm_final
+   select(month, age_class, plant_nr, temp_exp, fv_fm_final)
+
+# filter further if certain datapoints or whole individuals should be taken out. 
+   #filter(is.na(remark) | !str_detect(remark, "; curve")) |> #add filter like this
+```
+
+## HOT
+
+### Raw data scatter plot
+
+Making scatter plot for visualization. Points for each individual plant represented by colour and connected by lines. Faceted by month x age class.
+
+```{r}
+#| label: hot visualization plot  
+#| message: false
+   
+# summary vizualisation plot for hot treatment faceted by month x age class 
+ggplot(hot_subset, aes(x = as.numeric(as.character(temp_exp)), y = fv_fm_final, 
+                       colour = factor(plant_nr))) +  
+  
+  geom_line(alpha = 0.4) +  # one line per plant
+  geom_point(alpha = 0.6, size = 1.5) + # one point per measurement
+  facet_grid(month ~ age_class) + # facet by month x age class
+
+# add labels  
+  labs( 
+    title = "Fv/Fm response across heat treatments from 20 C to 56 C",
+    subtitle = "Each colour and line represent one individual plant. All hot data. ", 
+    x = "Treatment temperature (C)",
+    y = "Fv/Fm",
+    colour = "Plant nr"
+  ) +
+
+#set theme  
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "grey90"),
+    strip.text       = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  ) 
+
+# saving plot to output folder
+ggsave(here("output", "hot_scatter_line_plot.png"), 
+       width = 10, height = 6, dpi = 300) 
+```
+
+Problematic single points:
+
+-   January_Pioneer_1 (low Fv/Fm at 20 C control)
+
+-   January_Building_3 (low Fv/Fm at 20 C control - although whole curve bounce up and down)
+
+-   January_Pioneer_6 (Fv/Fm increase again, is high at 56 C)
+
+Problematic curves on whole individual level (curves that bounce up and down):
+
+-   November_Newly Burnt_1, November_Pioneer_2, November_Building_2, November_Building_7, January_Building_4, January_Building_2, January_Mature_3, January_Mature_4, January_Pioneer_2, January_Pioneer_5, January_Pioneer_4, January_Pioneer_3, January_Building_6
+
+Most November individuals have a steep drop in Fv/Fm from -10 C to - 20 C.
+
+Most January individuals do not have a steep drop in Fv/Fm at more negative temperatures, although with a few exceptions. Indicate greater freezing tolerance in January compared to November. Biologically meaningful, statistically harder to use.
+
+January_Building_4 has an odd low point (0.00 = dead) at -15 before coming back to life at -20. Checked with after-treatment photos, leaves look healthy but one is missing. Therefore less biomass for measuring Fv/Fm than ususal, however should not end up with 0.00. Unlikely to be representative value for -15 treatment for this month x age class combination. Check what happens to estimate if set to NA.
+
+#### Making remark column for odd hot points/curves
+
+```{r}
+
+# NOT WORKING YET 
+
+hot_subset$hot_remark <- NA_character_
+
+# adding remarks for specific individuals 
+hot_subset |> 
+  mutate(
+  hot_remark = case_when(
+      id == "January_Pioneer_1" ~ "; low starting value ; bouncy curve",
+      id == "January_Building_3" ~ "; low starting value",
+      id == "November_Newly Burnt_1" ~ "; bounces back once",
+      id == "November_Pioneer_2" ~ "; bounces back once",
+      id == "November_Building_2" ~ "; bounces back once",
+      id == "November_Building_7" ~ "; bounces back once",
+      id == "January_Building_4" ~ "; low starting value ; bounces back once",
+      id == "January_Building_2" ~ "; bouncy curve",
+      id == "January_Mature_3" ~ "; bouncy curve",
+      id == "January_Mature_4" ~ "; bouncy curve",
+      id == "January_Pioneer_2" ~ "; low starting value",
+      id == "January_Pioneer_5" ~ "; low starting value",
+      id == "January_Pioneer_4" ~ "; bouncy curve",
+      id == "January_Pioneer_3" ~ "; bouncy curve",
+      id == "January_Building_6" ~ "; bounces back once",
+      id == "January_Pioneer_6" ~ "; high ending value",
+      TRUE ~ remark))
+```
+
+### Testing psiiht function on individual level hot with 50 boots
+
+Estimating curves using psiiht function. The function fits a thermal tolerance curve based on Fv/Fm vs. temperature. Can choose to run grouped (month x age class) or on individual plant level. Will run on individual plant level here.
+
+Remember to set.seed before every new psiiht, so the random number generator for bootstrapping start at the same point each time. So that results of bootstrapping is consistent if rerunning script.
+
+boots = n control how many (n) bootstrap iterations, ie. how many times a curve is fit based on random re-sampeling from the data set. Returns 95% CI for the curves, not T50 directly. Keep boots low for testing, high \>500 for analysis.
+
+When copied in from github, "htdata" is demo data from Perez 2020, must modify to fit own dataset before use
+
+#### Exploratory: CONTROL TEMP 20C
+
+```{r}
+#| label: psiiht for hot 
+#| message: false
+
+# stich columns together, using unite
+united_columns_hot <- unite(
+  hot_subset,
+  col = "new_id", 
+  month, age_class, plant_nr, # fitting nls for each individual plant
+  sep = "_",
+  remove = TRUE
+)
+
+set.seed(8) # set seed before every psiiht  
+# psiiht function for fitting thermal tolerance curve 
+htol_20_all <- psiiht(temperature = united_columns_hot$temp_exp, 
+               warming = TRUE,
+               fvfm = united_columns_hot$fv_fm_final, 
+               control_temp = 20,
+               id = united_columns_hot$new_id,
+               boots = 50 ) #increase in final
+
+htol_summary_20_all <- summary(htol_20_all) |> 
+          select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
+
+autoplot(htol_20_all) # plots logistic curves and dashed lines for Tcrit, T50, T95 
+
+
+#extracting the CI for the individual T50 found from bootstrapping
+htol_20_all_t50_ci <- purrr::map_dfr(names(htol_20_all$results), function(id) {
+  t50_boots <- htol_20_all$results[[id]]$T50
+  data.frame(
+    id    = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = quantile(t50_boots, 0.025, na.rm = TRUE),
+    T50.hi  = quantile(t50_boots, 0.975, na.rm = TRUE)
+  )
+})
+
+# get a warning, this is because the psiiht could not fit a T50 for all individuals
+
+```
+
+Run with 50 boots for testing function with all clean hot data. Returns relatively high prop_success for most individuals, with some exeptions:
+
+Can not fit curves (prop_success = NA) for two individuals; January_Pioneer_1 and January\_ Building_3 -This is the same individuals that had abnormally low starting Fv/Fm at 20 C control. Will try to run the model on 38 C as control temperature to see if these two individuals can be included as well.
+
+Returns very low success rates (prop_success \<0.5) for January_Building_4
+
+Returns low success rates (prop_success \<0.8) for Building_January_2, January_Mature_4, November_Pioneer_1, January_Newly Burnt_4, January_Poineer_4, January_Mature_6, November_Pioneer_5 and November_Building_2
+
+#### Exploratory: CONTROL TEMP 38C
+
+Taking into account that January_Pioneer_1 and January_Building_3 have very low starting values, trying to run the function with control temp 38 to see if those individuals can be included
+
+```{r}
+#| label: psiiht for hot from 38
+#| message: false
+
+set.seed(8) # set seed before every psiiht  
+# psiiht function for fitting thermal tolerance curve starting at 38 C 
+htol_38 <- psiiht(temperature = united_columns_hot$temp_exp, 
+               warming = TRUE,
+               fvfm = united_columns_hot$fv_fm_final, 
+               control_temp = 38, #NB! control changed to 38
+               id = united_columns_hot$new_id,
+               boots = 50 ) #increase in final
+
+htol_summary_38 <- summary(htol_38) |> 
+      select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
+
+autoplot(htol_38) # plots logistic curves and dashed lines for Tcrit, T50, T95 
+
+#extracting the CI for the individual T50 found from bootstrapping
+htol_38_t50_ci <- purrr::map_dfr(names(htol_38$results), function(id) {
+  t50_boots <- htol_38$results[[id]]$T50
+  data.frame(
+    id    = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = quantile(t50_boots, 0.025, na.rm = TRUE),
+    T50.hi  = quantile(t50_boots, 0.975, na.rm = TRUE)
+  )
+})
+```
+
+Still cannot fit T50s for the two problematic individuals.
+
+#### COMPARING MODEL WITH CONTROL = 20 VS. CONTROL = 38 ind + group level
+
+Comparing the T50 mean values on individual level. To be able to see if specific plants act differently between the two models, ie. if the models agree.
+
+```{r}
+#| label: 20 vs 38 individual 
+#| message: false
+
+# ── create comparison object ─────────────────────────────────────────────────
+comparison_20_vs_38 <- htol_20_all_t50_ci |>
+  rename(T50_20 = T50.mn, low_20 = T50.low, hi_20 = T50.hi) |>
+  inner_join(
+    htol_38_t50_ci |>
+      rename(T50_38 = T50.mn, low_38 = T50.low, hi_38 = T50.hi),
+    by = "id"
+  ) |>
+  separate(id, into = c("month", "age_class", "plant_nr"), sep = "_", remove = FALSE) |>
+  mutate(
+    T50_diff   = T50_38 - T50_20,
+    ci_overlap = !(hi_20 < low_38 | hi_38 < low_20)
+  ) |>
+  select(id, month, age_class, plant_nr, T50_20, T50_38, T50_diff, ci_overlap)
+
+
+# plot visually comparing T50 results between 20_all and 38 models with CI
+htol_compare_20_vs_38_ind <- bind_rows(
+  htol_20_all_t50_ci |> mutate(run = "control_20"),
+  htol_38_t50_ci     |> mutate(run = "control_38")
+) |>
+  ggplot(aes(x = T50.mn, y = id, color = run, shape = run)) +
+  geom_point(size = 3, position = position_dodge(width = 0.4)) +
+  geom_errorbarh(aes(xmin = T50.low, xmax = T50.hi),
+                 height = 0.2,
+                 position = position_dodge(width = 0.4)) +
+  scale_color_manual(values = c("control_20" = "grey50", "control_38" = "steelblue")) +
+  labs(x = "T50 (C)", y = NULL, title = "T50 comparison: control 20 vs 38",
+       color = NULL, shape = NULL) +
+  theme_bw()
+
+print(htol_compare_20_vs_38_ind)
+
+# saving plot to output folder individual
+ggsave(here("output", "htol_plot_compare_20_vs_38_ind.png"), 
+       width = 10, height = 6, dpi = 300) 
+
+
+
+# ── individual level comparison ───────────────────────────────────────────────
+comparison_20_vs_38 |>
+  select(month, age_class, plant_nr, T50_20, T50_38, T50_diff, ci_overlap) |>
+  arrange(month, age_class, plant_nr) |>
+  print(n = Inf)
+
+
+
+# ── group level paired t-test per month and age class ────────────────────────
+comparison_20_vs_38 |>
+  group_by(month, age_class) |>
+  summarise(
+    t_test = list(t.test(T50_20, T50_38, paired = TRUE)),
+    .groups = "drop"
+  ) |>
+  mutate(
+    p_value   = purrr::map_dbl(t_test, ~ .x$p.value),
+    mean_diff = purrr::map_dbl(t_test, ~ .x$estimate)
+  ) |>
+  select(month, age_class, p_value, mean_diff)
+
+
+
+# compare prop_success between models 
+prop_compare_20_vs_38_ind <- bind_rows(
+  htol_summary_20_all |> mutate(model = "control 20"),
+  htol_summary_38     |> mutate(model = "control 38")
+) |>
+  select(id, prop_success, model) |>
+  pivot_wider(names_from = model, values_from = prop_success)
+
+prop_compare_20_vs_38_ind  # equal for both models
+
+```
+
+Individual level: Big differences in predicted T50 (over 1 C diff) for: January_Mature_4 (2.1 C), January_Mature_7 (1.2 C), January_Pioneer_4 (1.1 C), January_Pioneer_5 (-1.5 C), January_Pioneer_6 (-1.0)
+
+For most groups the two models produce statistically interchangeable T50 estimates, because p-value \> 0.05.
+
+But January Building shows a significant difference (p = 0.037, mean difference = 0.26C). Probably because of lower and more variable starting Fv/Fm in January individuals. Would make the model more sensitive to control temperature choice.
+
+Also, for November mature the p = 0.02, but difference in mean T50 is only 0.06, so not very meaningful.
+
+How does this affect choice of control temp? Which is the better option? Need to discuss.
+
+NB: CANNOT SEE THE LAST 4 PIONEERS IN THE SUMMARY - WHY?
+
+#### Exploratory: comparing T50s and prop_success when setting odd points to NA
+
+#### NOVEMBER SUBSET CLEANED AND RAW
+
+Starting with just the November plant, as the data here is more tidy. Setting two specific data points to NA, due to four individuals2 bouncing back to life after fvfm decline at erlier temps. To see if it changes the predicted T50 values both on the individual plant level, and on the group level.
+
+```{r}
+#| label: november raw and clean 
+#| message: false
+
+# subset to November
+subset_nov <- hot_subset |>
+  filter(month == "November")
+
+# setting four specific data pions which had unlikely bounce_back in fvfm after initial decline as NA
+subset_nov_cleaned <- subset_nov |>
+  mutate(fv_fm_final = case_when(
+    age_class == "Newly Burnt" & plant_nr == 1 & temp_exp == 50 ~ NA_real_,
+    age_class == "Pioneer"     & plant_nr == 2 & temp_exp == 50 ~ NA_real_,
+    age_class == "Building"    & plant_nr == 2 & temp_exp == 50 ~ NA_real_,
+    age_class == "Building"    & plant_nr == 7 & temp_exp == 50 ~ NA_real_,
+    TRUE ~ fv_fm_final
+  ))
+
+# fit models for each
+# fit model for all nov data
+united_nov_raw <- unite(subset_nov, col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+set.seed(8)
+htol_nov_raw <- psiiht(temperature = united_nov_raw$temp_exp, 
+                       warming = TRUE, 
+                       fvfm = united_nov_raw$fv_fm_final, 
+                       control_temp = 20,
+                       id = united_nov_raw$new_id,
+                       boots = 50)
+
+# fit model for cleaned nov data
+united_nov_cleaned <- unite(subset_nov_cleaned, col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+set.seed(8)
+htol_nov_cleaned <- psiiht(temperature = united_nov_cleaned$temp_exp, 
+                           warming = TRUE,
+                           fvfm = united_nov_cleaned$fv_fm_final,
+                           control_temp = 20,
+                           id = united_nov_cleaned$new_id,
+                           boots = 50)
+
+
+# extract bootstrap CI for individual T50 for each
+
+# CI extraction for nov raw data
+nov_raw_t50_ci <- purrr::map_dfr(names(htol_nov_raw$results), function(id) {
+  t50_boots <- htol_nov_raw$results[[id]]$T50
+  if (!is.numeric(t50_boots) | length(t50_boots) == 0) {
+    return(data.frame(id = id, T50.mn = NA, T50.low = NA, T50.hi = NA))
+  }
+  data.frame(
+    id      = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = unname(quantile(t50_boots, 0.025, na.rm = TRUE)),
+    T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
+  )
+})
+
+# CI extraction for nov clean data 
+nov_cleaned_t50_ci <- purrr::map_dfr(names(htol_nov_cleaned$results), function(id) {
+  t50_boots <- htol_nov_cleaned$results[[id]]$T50
+  if (!is.numeric(t50_boots) | length(t50_boots) == 0) {
+    return(data.frame(id = id, T50.mn = NA, T50.low = NA, T50.hi = NA))
+  }
+  data.frame(
+    id      = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = unname(quantile(t50_boots, 0.025, na.rm = TRUE)),
+    T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
+  )
+})
+
+```
+
+Four odd Fv/Fm values representing bounce-backs after initial decline were identified and set to NA for testing model.
+
+#### COMPARING MODEL FOR RAW VS CLEAN NOVEMBER DATA
+
+```{r}
+#| label: compare november raw vs clean 
+#| message: false
+
+# making comparison object 
+nov_comparison <- nov_raw_t50_ci |>
+  rename(T50_raw = T50.mn, raw.low = T50.low, raw.hi = T50.hi) |>
+  inner_join(
+    nov_cleaned_t50_ci |>
+      rename(T50_cleaned = T50.mn, cleaned.low = T50.low, cleaned.hi = T50.hi),
+    by = "id"
+  ) |>
+  separate(id, into = c("month", "age_class", "plant_nr"), sep = "_", remove = FALSE) |>
+  mutate(
+    T50_diff   = T50_cleaned - T50_raw,
+    ci_overlap = !(raw.hi < cleaned.low | cleaned.hi < raw.low)
+  ) |>
+  select(id, month, age_class, plant_nr, T50_raw, T50_cleaned, T50_diff, ci_overlap)
+
+
+# plot visual comparison with CI individual
+htol_compare_nov_raw_vs_cleaned <- bind_rows(
+  nov_raw_t50_ci     |> mutate(version = "raw"),
+  nov_cleaned_t50_ci |> mutate(version = "cleaned")
+) |>
+  ggplot(aes(x = T50.mn, y = id, color = version, shape = version)) +
+  geom_point(size = 3, position = position_dodge(width = 0.4)) +
+  geom_errorbarh(aes(xmin = T50.low, xmax = T50.hi),
+                 height = 0.2,
+                 position = position_dodge(width = 0.4)) +
+  scale_color_manual(values = c("raw" = "grey50", "cleaned" = "steelblue")) +
+  labs(x = "T50 (C)", y = NULL, title = "November T50: raw vs cleaned",
+       color = NULL, shape = NULL) +
+  theme_bw()
+
+print(htol_compare_nov_raw_vs_cleaned)
+
+# save plot 
+ggsave(here("output", "htol_compare_nov_raw_vs_cleaned.png"),
+       width = 10, height = 6, dpi = 300)
+
+# looks like CIs are overlapping also for the individual where NA has been introduced. 
+
+
+# individual level comparison all age classes and months 
+nov_comparison |>
+  select(month, age_class, plant_nr, T50_raw, T50_cleaned, T50_diff, ci_overlap) |>
+  arrange(month, age_class, plant_nr) |>
+  print(n = Inf)
+
+# group level paired t-test per age class
+nov_comparison |>
+  group_by(age_class) |>
+  summarise(t_test = list(t.test(T50_raw, T50_cleaned, paired = TRUE))) |>
+  mutate(
+    p_value   = purrr::map_dbl(t_test, ~ .x$p.value),
+    mean_diff = purrr::map_dbl(t_test, ~ .x$estimate)
+  ) |>
+  select(age_class, p_value, mean_diff)
+
+
+# compare prop_success between raw and cleaned november models
+prop_compare_nov_raw_vs_cleaned <- bind_rows(
+  summary(htol_nov_raw)     |> mutate(model = "raw"),
+  summary(htol_nov_cleaned) |> mutate(model = "cleaned")
+) |>
+  select(id, prop_success, model) |>
+  pivot_wider(names_from = model, values_from = prop_success)
+
+prop_compare_nov_raw_vs_cleaned
+```
+
+Individual level: High differences in predicted T50 (over 1C) for: November_Pioneer_2 (-1.4 C)
+
+Paired t-tests comparing T50 estimates from raw and cleaned datasets found no significant differences for any age class (grouped) (all p \> 0.05, mean differences \< 0.12°C), indicating that the cleaning had small effect on the results.
+
+So points could be set as NA without big differences in T50 results on group level.
+
+Prop_success stays relatively similar - except for November_Building_2 which is reduced from 0.84 to 0.5. Likely because there is less points to choose from after setting NA.
+
+NB: CANNOT SEE THE LAST TWO INDIVIDUAL IN THE SUMMARIES - WHY?
+
+#### JANUARY SUBSET CLEANED COMPARED TO RAW
+
+do the same as above for january data. more weird points that needs adressing here. maybe better to run on subsets instead of all january data at once
+
+```{r}
+
+```
+
+### HOT PSIIHT RUN WITH 500 BOOTS FOR FINAL T50:
+
+```{r}
+#| label: hot  
+#| message: false
+
+#need to make run on right subset when decided
+
+set.seed(8) # set seed before every psiiht  
+# psiiht function for fitting thermal tolerance curve 
+htol_500_boots <- psiiht(temperature = united_columns_hot$temp_exp, 
+               warming = TRUE,
+               fvfm = united_columns_hot$fv_fm_final, 
+               control_temp = 20,
+               id = united_columns_hot$new_id,
+               boots = 500 ) #increase to 500 in final
+
+htol_summary_500_boots <- summary(htol_500_boots) |> 
+          select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
+
+autoplot(htol_500_boots) # plots logistic curves and dashed lines for Tcrit, T50, T95 
+
+# Export the hot T50 data when ready
+
+# write.csv(
+#  data, here("raw_data", file = "T50_hot_500_boots.csv"))
+```
+
+## COLD
+
+### Raw data scatter plot
+
+Making scatter plot for visualization. Points for each individual plant represented by colour and connected by lines. Faceted by month x age class.
+
+```{r}
+#| label: cold visualization plot  
+#| message: false
+   
+# summary vizualisation plot for cold treatment faceted by month x age class 
+ggplot(cold_subset, aes(x = as.numeric(as.character(temp_exp)), y = fv_fm_final, 
+                       colour = factor(plant_nr))) +  
+  
+  geom_line(alpha = 0.4) +  # one line per plant
+  geom_point(alpha = 0.6, size = 1.5) + # one point per measurement
+  facet_grid(month ~ age_class) + # facet by month x age class
+
+# add labels  
+  labs( 
+    title = "Fv/Fm response across freezing treatments from 5 C to -20 C",
+    subtitle = "Each colour and line represent one individual plant. All cold data. ", 
+    x = "Treatment temperature (C)",
+    y = "Fv/Fm",
+    colour = "Plant nr"
+  ) +
+
+#set theme  
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "grey90"),
+    strip.text       = element_text(face = "bold"),
+    panel.grid.minor = element_blank()
+  ) 
+
+# saving plot to output folder
+ggsave(here("output", "cold_scatter_line_plot.png"), 
+       width = 10, height = 6, dpi = 300) 
+```
+
+Problematic November low starting values: November_Building_4 and November_Building_3
+
+Other November notes: Newly Burnt_3, Pioneer_7, Pioneer_5, Building_2, Mature_2 fvfm dips and goes back up.
+
+January low starting values - many - but this seems like a general trend. So maybe not problematic, but meaningful biologically. Many very bumpy lines, especially Pioneer_4 which dies at -15 and comes back to life.
+
+### FREEZING RESPONSE CURVES AND LT50 - ALL CLEAN DATA INCLUDED
+
+```{r}
+#| label: psiiht for cold
+#| message: false
+
+# stiching columns together 
+united_columns_cold <- unite(
+  cold_subset,
+  col = "new_id", 
+  month, age_class, plant_nr, # now fitting nls for each individual plant
+  sep = "_",
+  remove = TRUE
+)
+
+set.seed(8) # set seed before every psiiht  
+# estimating cold tolerance curves using psiiht function
+ctol <- psiiht(temperature = united_columns_cold$temp_exp,
+               warming = FALSE,
+               fvfm = united_columns_cold$fv_fm_final,  
+               control_temp = 5, 
+               id = united_columns_cold$new_id, 
+               boots = 50) 
+
+ctol_summary_all <- summary(ctol) |> 
+       select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
+
+autoplot(ctol) # plots logistic curves and dashed lines for Tcrit, T50, T95 
+
+# creating separate scatterplot to see datapoints without curves
+united_columns_cold |> ggplot(aes(x = temp_exp, y = fv_fm_final)) +
+  geom_point() +
+  facet_wrap(vars(new_id))
+
+# struggles to fit lines to the data (does not reach the T-values)
+# return NaN for most of the January individuals
+# bigger chance for success of fitting curve for november ones, but most have a low prop_success, so the results are biased. tolerance might therefore be even lower. 
+# how to deal with this - will end up with very little data if removing rows where nls cant be fit
+```
+
+struggles to make curves, especially for jan as fvfm is not dropping low enough. biologically useful information, statistically not so much. can then present the raw data and show that there is not much of a decline, while this means that we did not thest them for low enough temps for the model to fit t50 cold. also present table of which plants did get a value. also important to report prop_success!
+
+```{r}
+#see if setting the few odd values as NA does anything? if not. go with the model full w 500 boots .
+```
+
+save the 500 boots T50 data as csv in output folder right after boots
+
+**T50 DATA PROCESSING**
+
+```{r}
+#| label: T50 data import
+#| message: false
+
+# read in hot and cold csvs from raw data? folder 
+
+```
+
+```{r}
+#| label: T50 data checking 
+#| message: false
+
+
+
+```
+
+```{r}
+#| label: T50 normality check 
+#| message: false
+```
+
+if normallity is good - can use linear mixed models
+
+read csv in acain
+
+check T50 datasets for NAs and impossible values, remove,
+
+check for normality on individual level - only for the model (curve fitting approach i hcose to move forward with) and before runnin statistical tests on the t50 estimates
+
+**STATISTICS (LINEAR MIXED MODEL?)**
+
+linear mixed effect model (separately or together for each hot/cold and ecah hypothesis?) \<- lmer(T50) \~ month \* age_class\* + (1\|id)
+
+anova?
+
+residuals
+
+post hoc
+
+Make one big T50 table for thesis.
+
+table w p-values sgnificance etc.
+
+figures?
+
+how to connect to traits? still time?

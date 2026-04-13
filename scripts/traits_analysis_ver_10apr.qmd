@@ -1,0 +1,266 @@
+---
+title: "Traits"
+format: html
+editor: visual
+---
+
+## Loading library
+
+```{r}
+#| label: loading library
+#| message: false
+
+library(tidyverse)
+library(here)
+```
+
+## Data import
+
+```{r}
+#| label: data import 
+#| message: false
+
+clean_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Tolerance_Bente_Msc.csv")) 
+  filter
+
+view(clean_data) # check import 
+```
+
+## Mean table and exploratory plot
+
+find out if I want leaf are in here as well
+
+```{r}
+#| label: exploratory plot 
+#| message: false
+
+# make trait object
+traits <- c("leaf_thickness_mean", "sla", "ldmc")
+ 
+# tidy labels for facet strips
+trait_labels <- c(
+  leaf_thickness_mean = "Leaf Thickness (mm)",
+  sla                 = "SLA (cm/g)",
+  ldmc                = "LDMC (mg/g)"
+)
+ 
+df_traits <- clean_data |>
+  filter(proj_2025 == "Traits") |>
+  select(plant_nr, age_class, month, all_of(traits)) |>   # keep relevant cols
+  mutate(
+    month     = factor(month,     levels = c("November", "January"), # adjusting levels for fig
+                       labels = c("November", "January")),
+    age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer", 
+                                             "Building", "Mature"))                           
+  )
+
+
+# want a summary table of means of trait values  pr group
+summary_table <- df_traits |>
+  group_by(age_class, month) |>
+  summarise(
+    thickness_mean = round(mean(leaf_thickness_mean, na.rm = TRUE), 4),
+    thickness_sd   = round(sd(leaf_thickness_mean,   na.rm = TRUE), 4),
+    sla_mean       = round(mean(sla,                 na.rm = TRUE), 4),
+    sla_sd         = round(sd(sla,                   na.rm = TRUE), 4),
+    ldmc_mean      = round(mean(ldmc,                na.rm = TRUE), 4),
+    ldmc_sd        = round(sd(ldmc,                  na.rm = TRUE), 4),
+    n              = n(),
+    .groups = "drop"
+  )
+
+# View it
+print(summary_table)
+
+# Export as CSV
+#write.csv(summary_table, "trait_summary.csv", row.names = FALSE)
+ 
+# pivot to long format
+df_long <- df_traits |>
+  pivot_longer(cols = all_of(traits),
+               names_to  = "trait",
+               values_to = "value") |>
+  mutate(trait = factor(trait, levels = traits))
+ 
+# making plot 
+traits_plotted <- ggplot(df_long,
+            aes(x = age_class, y = value, fill = month, colour = month)) +
+ 
+  # raw points (jittered, dodged to match boxes)
+  geom_point(
+    position = position_jitterdodge(jitter.width = 0.15, dodge.width = 0.75),
+    size  = 1.6, alpha = 0.45, shape = 16
+  ) +
+ 
+  # box plots (dodged, slightly transparent)
+  geom_boxplot(
+    position     = position_dodge(width = 0.75),
+    width        = 0.55,
+    outlier.shape = NA,          # hide outlier dots (already shown as points)
+    alpha        = 0.35,
+    linewidth    = 0.55
+  ) +
+ 
+  # mean ± 1 SD error bars
+  stat_summary(
+    fun.data = mean_se, # standard error around mean
+    geom      = "errorbar",
+    position  = position_dodge(width = 0.75),
+    width     = 0.25,
+    linewidth = 0.7
+  ) +
+ 
+  # mean dot 
+  stat_summary(
+    fun      = mean, 
+    geom     = "point",
+    shape    = 23,               # filled diamond
+    size     = 2.5,
+    position = position_dodge(width = 0.75)
+  ) +
+ 
+  # facet: one panel per trait 
+  facet_wrap(~ trait,
+             scales   = "free_y",
+             labeller = as_labeller(trait_labels),
+             ncol     = 3) +
+ 
+  # colour
+  scale_fill_manual(  values = c("November" = "#E07B4F", "January" = "#4E9EC2")) +
+  scale_colour_manual(values = c("November" = "#E07B4F", "January" = "#4E9EC2")) +
+ 
+  # labels
+  labs(
+    title  = "Leaf Trait Measurements by Age Class and Month",
+    x      = "Age Class",
+    y      = "Trait Value",
+    fill   = "Month",
+    colour = "Month"
+  ) +
+ 
+  theme_bw(base_size = 12) +
+  theme(
+    strip.background = element_rect(fill = "grey92", colour = "grey60"),
+    strip.text       = element_text(face = "bold", size = 10),
+    legend.position  = "top",
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 30, hjust = 1)
+  )
+
+print(traits_plotted) # must be run in the console
+
+# add ggsave when happy
+ 
+```
+
+Leaf thickness big spread, no clear trends visually. Maybe generally somewhat thicker in January, except for pio.
+
+SLA clearly higher for Newly Burnt than for the other age classes. Looks relative stable between seasons.
+
+Looks like LDMC is clearly higher in November than in January. Also increasing with age potentially.
+
+Have to test if there is actually significant difference between groups. Want to compare using a LMM, must check if normality assumption is met first.
+
+## Check if normality assumption is met
+
+```{r}
+
+df_long |>
+  dplyr::filter(trait %in% c("leaf_thickness_mean", "sla", "ldmc")) |>
+  group_by(trait, age_class, month) |>
+  summarise(shapiro_p = shapiro.test(value)$p.value)
+```
+
+## Log-transformation of data to meet normality assumption
+
+```{r}
+
+# Leaf thickness — try log transform to fix the Pioneer November group
+df_traits <- df_traits |>
+  mutate(
+    leaf_thickness_log = log(leaf_thickness_mean),
+    ldmc_log           = log(ldmc),
+    sla_log            = log(sla)
+  )
+```
+
+## Model fitting on log-transformed data
+
+```{r}
+
+library(lme4)
+library(lmerTest)
+
+conflicted::conflicts_prefer(lmerTest::lmer)
+
+# Fit models — using log-transformed versions
+model_thickness <- lmer(leaf_thickness_log ~ age_class * month + (1 | plant_nr), 
+                        data = df_traits)
+model_sla       <- lmer(sla_log ~ age_class * month + (1 | plant_nr), 
+                        data = df_traits)
+model_ldmc      <- lmer(ldmc_log ~ age_class * month + (1 | plant_nr), 
+                        data = df_traits)
+```
+
+## Check the p-values
+
+```{r}
+
+
+# Get ANOVA-style p-values for each term
+# This is NOT actually an ANOVA, just gives readable output on the same format
+
+anova(model_thickness)
+anova(model_sla)
+anova(model_ldmc)
+```
+
+clearly significant for age class and month seperatly for thickness and sla, and ldmc less
+
+interaction term less so for ldmc
+
+## Checking residuals
+
+Using residuals vs fitted - if normality then points should be scattered randomly
+
+Using QQ-plot - points should be on a straight line, heavy tails can indicate problems
+
+```{r}
+
+# Leaf thickness
+plot(model_thickness, main = "Leaf Thickness - Residuals vs Fitted") # looks good
+qqnorm(resid(model_thickness), main = "Leaf Thickness - QQ Plot") #looks good
+qqline(resid(model_thickness))
+
+# SLA
+plot(model_sla, main = "SLA - Residuals vs Fitted") #looks good
+qqnorm(resid(model_sla), main = "SLA - QQ Plot") #looks good
+qqline(resid(model_sla))
+
+# LDMC
+plot(model_ldmc, main = "LDMC - Residuals vs Fitted") #looks good
+qqnorm(resid(model_ldmc), main = "LDMC - QQ Plot") # has heavy tails, but ok
+qqline(resid(model_ldmc))
+```
+
+## Post-hoc tests
+
+Pairwise comparisons within month, within age class.
+
+```{r}
+# comparing pairwise 
+
+library(emmeans)
+
+# Compare age classes within each month
+emmeans(model_thickness, pairwise ~ age_class | month, adjust = "tukey")
+emmeans(model_sla,       pairwise ~ age_class | month, adjust = "tukey")
+emmeans(model_ldmc,      pairwise ~ age_class | month, adjust = "tukey")
+
+# Compare months within each age class
+emmeans(model_thickness, pairwise ~ month | age_class, adjust = "tukey")
+emmeans(model_sla,       pairwise ~ month | age_class, adjust = "tukey")
+emmeans(model_ldmc,      pairwise ~ month | age_class, adjust = "tukey")
+```
+
+Big output, need to look into later.
