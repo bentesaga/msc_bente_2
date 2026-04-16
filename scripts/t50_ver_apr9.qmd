@@ -603,92 +603,82 @@ jan_cleaned_t50_ci <- purrr::map_dfr(names(htol_nov_cleaned$results), function(i
     T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
   )
 })
-
-
 ```
 
-MODEL FAILS FOR CLEAN JANUARY DATA
+MODEL FAILS WHEN CONTROL TEMPERATURE IS SET TO NA. Beacause the T50 is calculated based on the starting value at control. If control is missing, it cannot calculate T50.
 
-#### COMPARING RAW VS CLEAN JANUARY DATA
+#### EXPLORATORY: COMPARISON OF DATA AFTER TALKING TO RICHARD 16/4
+
+After discussion, the only datapoint worth setting to NA is January_Pioneer_1, 20 C, as this seems unlikely. All other points could be correct, impossible to know which ones are incorrect. Therefore keep them in.
+
+Set January_Pioneer_1, 20 C to NA and do sensitivity analysis. Not reccommented to use t-test afterall.
 
 ```{r}
-#| label: jan raw vs cleaned   
+#| label: model full data minus jan_pio_1   
 #| message: false
 
-# making comparison object 
-jan_comparison <- jan_raw_t50_ci |>
-  rename(T50_raw = T50.mn, raw.low = T50.low, raw.hi = T50.hi) |>
-  inner_join(
-    jan_cleaned_t50_ci |>
-      rename(T50_cleaned = T50.mn, cleaned.low = T50.low, cleaned.hi = T50.hi),
-    by = "id" ) |>
-  separate(id, into = c("month", "age_class", "plant_nr"), sep = "_", remove = FALSE) |>
-  mutate(
-    T50_diff   = T50_cleaned - T50_raw,
-    ci_overlap = !(raw.hi < cleaned.low | cleaned.hi < raw.low)) |>
-  select(id, month, age_class, plant_nr, T50_raw, T50_cleaned, T50_diff, ci_overlap)
+# subset to clean hot data
+# setting January_Pioneer_1, 20 C data point to NA, as this is the only value that very certanly is incorrect
+# update: control value CANNOT be set to NA, as the model needs a starting value. 
+# removing whole individual instead. 
 
+# does not work when settin the point to NA, therefore removing whole individual instead
 
-# plot visual comparison with CI individual
-htol_compare_jan_raw_vs_cleaned <- bind_rows(
-  jan_raw_t50_ci     |> mutate(version = "raw"),
-  jan_cleaned_t50_ci |> mutate(version = "cleaned")
-) |>
-  ggplot(aes(x = T50.mn, y = id, color = version, shape = version)) +
-  geom_point(size = 3, position = position_dodge(width = 0.4)) +
-  geom_errorbarh(aes(xmin = T50.low, xmax = T50.hi),
-                 height = 0.2,
-                 position = position_dodge(width = 0.4)) +
-  scale_color_manual(values = c("raw" = "grey50", "cleaned" = "steelblue")) +
-  labs(x = "T50 (C)", y = NULL, title = "November T50: raw vs cleaned",
-       color = NULL, shape = NULL) +
-  theme_bw()
+hot_cleaned <- hot_subset |>
+  filter(!(age_class == "Pioneer" & month == "January" & plant_nr == 1))
 
-print(htol_compare_jan_raw_vs_cleaned)
+# fit model for cleaned data
+united_hot_cleaned <- unite(hot_cleaned, 
+                            col = "new_id", month, age_class, plant_nr,
+                            sep = "_", remove = TRUE)
 
-# save plot 
-ggsave(here("output", "htol_compare_jan_raw_vs_cleaned.png"),
-       width = 10, height = 6, dpi = 300)
+set.seed(8)
+htol_20_cleaned <- psiiht(temperature = united_hot_cleaned$temp_exp, 
+                       warming = TRUE, 
+                       fvfm = united_hot_cleaned$fv_fm_final, 
+                       control_temp = 20,
+                       id = united_hot_cleaned$new_id,
+                       boots = 50)
 
-# looks like CIs are ....
+htol_summary_20_cleaned <- summary(htol_20_cleaned) |> 
+          select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
 
+autoplot(htol_20_cleaned) # plots logistic curves and dashed lines for Tcrit, T50, T95 
 
-# individual level comparison all age classes and months 
-jan_comparison |>
-  select(month, age_class, plant_nr, T50_raw, T50_cleaned, T50_diff, ci_overlap) |>
-  arrange(month, age_class, plant_nr) |>
-  print(n = Inf)
+#extracting the CI for the individual T50 found from bootstrapping
+htol_20_clean_t50_ci <- purrr::map_dfr(names(htol_20_cleaned$results), function(id) {
+  t50_boots <- htol_20_cleaned$results[[id]]$T50
+  data.frame(
+    id    = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = quantile(t50_boots, 0.025, na.rm = TRUE),
+    T50.hi  = quantile(t50_boots, 0.975, na.rm = TRUE)
+  )
+})
 
-# group level paired t-test per age class
-nov_comparison |>
-  group_by(age_class) |>
-  summarise(t_test = list(t.test(T50_raw, T50_cleaned, paired = TRUE))) |>
-  mutate(
-    p_value   = purrr::map_dbl(t_test, ~ .x$p.value),
-    mean_diff = purrr::map_dbl(t_test, ~ .x$estimate)
-  ) |>
-  select(age_class, p_value, mean_diff)
-
-
-# compare prop_success between raw and cleaned november models
-prop_compare_nov_raw_vs_cleaned <- bind_rows(
-  summary(htol_nov_raw)     |> mutate(model = "raw"),
-  summary(htol_nov_cleaned) |> mutate(model = "cleaned")
-) |>
-  select(id, prop_success, model) |>
-  pivot_wider(names_from = model, values_from = prop_success)
-
-prop_compare_nov_raw_vs_cleaned
+# get a warning because some individuals have NA instead of means
 ```
+
+Realized that January_Pioneer_1 was actually one of the two individuals the model failed to calculate T50 for, so removing this plant explicitly does not affect the group mean T50 whatsoever.
 
 ### HOT PSIIHT RUN WITH 500 BOOTS FOR FINAL T50:
 
+Based on findings and conversation with Richard about only one point - that does not affect the mean - could be justified to set to NA, I choose to run the model for T50 hot with all hot FvFm data included.
+
 ```{r}
-#| label: hot  
+#| label: hot 500 boots
 #| message: false
 
-#need to make run on right subset when decided
+# run psiiht with 500 boots on full hot_subset
 
+# stich columns together, using unite, same as forfirst test run
+united_columns_hot <- unite(
+  hot_subset,
+  col = "new_id", 
+  month, age_class, plant_nr, # fitting nls for each individual plant
+  sep = "_",
+  remove = TRUE
+)
 set.seed(8) # set seed before every psiiht  
 # psiiht function for fitting thermal tolerance curve 
 htol_500_boots <- psiiht(temperature = united_columns_hot$temp_exp, 
@@ -706,7 +696,7 @@ autoplot(htol_500_boots) # plots logistic curves and dashed lines for Tcrit, T50
 # Export the hot T50 data when ready
 
 # write.csv(
-#  data, here("raw_data", file = "T50_hot_500_boots.csv"))
+#  data, here("raw_data", file = "T50_hot.csv"))
 ```
 
 ## COLD
@@ -795,13 +785,27 @@ united_columns_cold |> ggplot(aes(x = temp_exp, y = fv_fm_final)) +
 # how to deal with this - will end up with very little data if removing rows where nls cant be fit
 ```
 
-struggles to make curves, especially for jan as fvfm is not dropping low enough. biologically useful information, statistically not so much. can then present the raw data and show that there is not much of a decline, while this means that we did not thest them for low enough temps for the model to fit t50 cold. also present table of which plants did get a value. also important to report prop_success!
+NOW ONLY WORKING IF RUN ON GROUP LEVEL
+
+struggles to make curves, especially for jan as fvfm is not dropping low enough. biologically useful information, statistically not so much. can then present the raw data and show that there is not much of a decline, while this means that we did not test for low enough temps for the model to fit t50 cold. also present table of which plants did get a value. also important to report prop_success!
+
+ALTERNATIVELY: RICHARD RECCOMENDS TO TRY WITH AN EXPONENTIAL MODEL INSTEAD OF USING PSIIHT
+
+#### Exploratory: EXPONENTIAL MODEL 
+
+An exponential model could potentially work better based on the shape of the curves for cold data.
+
+```{r}
+#| label: exponential model for cold
+#| message: false
+
+# FvFm ~ theta1 * exp(theta2 * Temperature)
+# see if i can make adjustments to psiiht so it fits this instead
+```
 
 ```{r}
 #see if setting the few odd values as NA does anything? if not. go with the model full w 500 boots .
 ```
-
-save the 500 boots T50 data as csv in output folder right after boots
 
 **T50 DATA PROCESSING**
 
