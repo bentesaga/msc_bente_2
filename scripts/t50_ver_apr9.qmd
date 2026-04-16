@@ -16,7 +16,7 @@ library(here)
 library(thermalTolerance) 
 
 # remember to re-install if Richard changes package, found on github, installed using: 
-# remotes::install_github("richardjtelford/thermalTolerance") 
+#remotes::install_github("richardjtelford/thermalTolerance") 
 # this package estimates of 3 different PSII heat tolerance metrics, Tcrit, T50 and T95. Can take each individual nr plant into account, fits curves by randomly resampling for each individual by bootstrapping.
 ```
 
@@ -138,10 +138,11 @@ January_Building_4 has an odd low point (0.00 = dead) at -15 before coming back 
 hot_subset$hot_remark <- NA_character_
 
 # adding remarks for specific individuals 
+# need to move down , stich on afterwards?
 hot_subset |> 
   mutate(
   hot_remark = case_when(
-      id == "January_Pioneer_1" ~ "; low starting value ; bouncy curve",
+      new_id == "January_Pioneer_1" ~ "; low starting value ; bouncy curve",
       id == "January_Building_3" ~ "; low starting value",
       id == "November_Newly Burnt_1" ~ "; bounces back once",
       id == "November_Pioneer_2" ~ "; bounces back once",
@@ -267,7 +268,7 @@ Comparing the T50 mean values on individual level. To be able to see if specific
 #| label: 20 vs 38 individual 
 #| message: false
 
-# ── create comparison object ─────────────────────────────────────────────────
+# create comparison object 
 comparison_20_vs_38 <- htol_20_all_t50_ci |>
   rename(T50_20 = T50.mn, low_20 = T50.low, hi_20 = T50.hi) |>
   inner_join(
@@ -306,15 +307,14 @@ ggsave(here("output", "htol_plot_compare_20_vs_38_ind.png"),
 
 
 
-# ── individual level comparison ───────────────────────────────────────────────
+# individual level comparison 
 comparison_20_vs_38 |>
   select(month, age_class, plant_nr, T50_20, T50_38, T50_diff, ci_overlap) |>
   arrange(month, age_class, plant_nr) |>
   print(n = Inf)
 
 
-
-# ── group level paired t-test per month and age class ────────────────────────
+# group level paired t-test per month and age class 
 comparison_20_vs_38 |>
   group_by(month, age_class) |>
   summarise(
@@ -326,7 +326,6 @@ comparison_20_vs_38 |>
     mean_diff = purrr::map_dbl(t_test, ~ .x$estimate)
   ) |>
   select(month, age_class, p_value, mean_diff)
-
 
 
 # compare prop_success between models 
@@ -511,7 +510,7 @@ prop_compare_nov_raw_vs_cleaned
 
 Individual level: High differences in predicted T50 (over 1C) for: November_Pioneer_2 (-1.4 C)
 
-Paired t-tests comparing T50 estimates from raw and cleaned datasets found no significant differences for any age class (grouped) (all p \> 0.05, mean differences \< 0.12°C), indicating that the cleaning had small effect on the results.
+Paired t-tests comparing T50 estimates from raw and cleaned datasets found no significant differences for any age class (grouped) (all p \> 0.05, mean differences \< 0.12B0C), indicating that the cleaning had small effect on the results.
 
 So points could be set as NA without big differences in T50 results on group level.
 
@@ -524,7 +523,162 @@ NB: CANNOT SEE THE LAST TWO INDIVIDUAL IN THE SUMMARIES - WHY?
 do the same as above for january data. more weird points that needs adressing here. maybe better to run on subsets instead of all january data at once
 
 ```{r}
+#| label: january raw vs cleaned   
+#| message: false
 
+# subset to January
+subset_jan <- hot_subset |>
+  filter(month == "January")
+
+# setting specific points with abnormal starting and ending FvFm values to NA to se how it affects the T50 predictions 
+subset_jan_cleaned <- subset_jan |>
+  mutate(fv_fm_final = case_when(
+    age_class == "Pioneer"  & plant_nr == 1 & temp_exp == 20 ~ NA_real_,  # low starting value
+    age_class == "Pioneer"  & plant_nr == 2 & temp_exp == 20 ~ NA_real_,  # low starting value
+    age_class == "Pioneer"  & plant_nr == 3 & temp_exp == 20 ~ NA_real_,  # low curve
+    age_class == "Pioneer"  & plant_nr == 4 & temp_exp == 20 ~ NA_real_,  # low curve
+    age_class == "Pioneer"  & plant_nr == 5 & temp_exp == 20 ~ NA_real_,  # low starting value
+    age_class == "Pioneer"  & plant_nr == 6 & temp_exp == 56 ~ NA_real_,  # high ending value
+    age_class == "Building" & plant_nr == 3 & temp_exp == 20 ~ NA_real_,  # low starting value
+    age_class == "Building" & plant_nr == 4 & temp_exp == 20 ~ NA_real_,  # low starting value
+    TRUE ~ fv_fm_final
+  ))
+
+# verify points removed
+subset_jan_cleaned |>
+  group_by(age_class, plant_nr) |>
+  summarise(removed = sum(is.na(fv_fm_final)), .groups = "drop") |>
+  filter(removed > 0)
+
+# fit models for each
+# fit model for all jan data
+united_jan_raw <- unite(subset_jan, col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+set.seed(8)
+htol_jan_raw <- psiiht(temperature = united_jan_raw$temp_exp, 
+                       warming = TRUE, 
+                       fvfm = united_jan_raw$fv_fm_final, 
+                       control_temp = 20,
+                       id = united_jan_raw$new_id,
+                       boots = 50)
+
+# fit model for cleaned nov data
+united_jan_cleaned <- unite(subset_jan_cleaned, col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+set.seed(8)
+htol_jan_cleaned <- psiiht(temperature = united_jan_cleaned$temp_exp, 
+                           warming = TRUE,
+                           fvfm = united_jan_cleaned$fv_fm_final,
+                           control_temp = 20,
+                           id = united_jan_cleaned$new_id,
+                           boots = 50)
+
+
+# extract bootstrap CI for individual T50 for each
+
+# CI extraction for nov raw data
+jan_raw_t50_ci <- purrr::map_dfr(names(htol_jan_raw$results), function(id) {
+  t50_boots <- htol_jan_raw$results[[id]]$T50
+  if (!is.numeric(t50_boots) | length(t50_boots) == 0) {
+    return(data.frame(id = id, T50.mn = NA, T50.low = NA, T50.hi = NA))
+  }
+  data.frame(
+    id      = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = unname(quantile(t50_boots, 0.025, na.rm = TRUE)),
+    T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
+  )
+})
+
+# CI extraction for nov clean data 
+jan_cleaned_t50_ci <- purrr::map_dfr(names(htol_nov_cleaned$results), function(id) {
+  t50_boots <- htol_jan_cleaned$results[[id]]$T50
+  if (!is.numeric(t50_boots) | length(t50_boots) == 0) {
+    return(data.frame(id = id, T50.mn = NA, T50.low = NA, T50.hi = NA))
+  }
+  data.frame(
+    id      = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = unname(quantile(t50_boots, 0.025, na.rm = TRUE)),
+    T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
+  )
+})
+
+
+```
+
+MODEL FAILS FOR CLEAN JANUARY DATA
+
+#### COMPARING RAW VS CLEAN JANUARY DATA
+
+```{r}
+#| label: jan raw vs cleaned   
+#| message: false
+
+# making comparison object 
+jan_comparison <- jan_raw_t50_ci |>
+  rename(T50_raw = T50.mn, raw.low = T50.low, raw.hi = T50.hi) |>
+  inner_join(
+    jan_cleaned_t50_ci |>
+      rename(T50_cleaned = T50.mn, cleaned.low = T50.low, cleaned.hi = T50.hi),
+    by = "id" ) |>
+  separate(id, into = c("month", "age_class", "plant_nr"), sep = "_", remove = FALSE) |>
+  mutate(
+    T50_diff   = T50_cleaned - T50_raw,
+    ci_overlap = !(raw.hi < cleaned.low | cleaned.hi < raw.low)) |>
+  select(id, month, age_class, plant_nr, T50_raw, T50_cleaned, T50_diff, ci_overlap)
+
+
+# plot visual comparison with CI individual
+htol_compare_jan_raw_vs_cleaned <- bind_rows(
+  jan_raw_t50_ci     |> mutate(version = "raw"),
+  jan_cleaned_t50_ci |> mutate(version = "cleaned")
+) |>
+  ggplot(aes(x = T50.mn, y = id, color = version, shape = version)) +
+  geom_point(size = 3, position = position_dodge(width = 0.4)) +
+  geom_errorbarh(aes(xmin = T50.low, xmax = T50.hi),
+                 height = 0.2,
+                 position = position_dodge(width = 0.4)) +
+  scale_color_manual(values = c("raw" = "grey50", "cleaned" = "steelblue")) +
+  labs(x = "T50 (C)", y = NULL, title = "November T50: raw vs cleaned",
+       color = NULL, shape = NULL) +
+  theme_bw()
+
+print(htol_compare_jan_raw_vs_cleaned)
+
+# save plot 
+ggsave(here("output", "htol_compare_jan_raw_vs_cleaned.png"),
+       width = 10, height = 6, dpi = 300)
+
+# looks like CIs are ....
+
+
+# individual level comparison all age classes and months 
+jan_comparison |>
+  select(month, age_class, plant_nr, T50_raw, T50_cleaned, T50_diff, ci_overlap) |>
+  arrange(month, age_class, plant_nr) |>
+  print(n = Inf)
+
+# group level paired t-test per age class
+nov_comparison |>
+  group_by(age_class) |>
+  summarise(t_test = list(t.test(T50_raw, T50_cleaned, paired = TRUE))) |>
+  mutate(
+    p_value   = purrr::map_dbl(t_test, ~ .x$p.value),
+    mean_diff = purrr::map_dbl(t_test, ~ .x$estimate)
+  ) |>
+  select(age_class, p_value, mean_diff)
+
+
+# compare prop_success between raw and cleaned november models
+prop_compare_nov_raw_vs_cleaned <- bind_rows(
+  summary(htol_nov_raw)     |> mutate(model = "raw"),
+  summary(htol_nov_cleaned) |> mutate(model = "cleaned")
+) |>
+  select(id, prop_success, model) |>
+  pivot_wider(names_from = model, values_from = prop_success)
+
+prop_compare_nov_raw_vs_cleaned
 ```
 
 ### HOT PSIIHT RUN WITH 500 BOOTS FOR FINAL T50:
@@ -662,27 +816,51 @@ save the 500 boots T50 data as csv in output folder right after boots
 ```{r}
 #| label: T50 data checking 
 #| message: false
+# hot
+summary(T50_hot)              # global check of all individuals
+colSums(is.na(T50_hot))      # see if a lot of NA
+boxplot(T50_hot$T50.mn, main = "T50 Boxplot")  # look at the values
 
+# RICHARD SAID TO ONLY REMOVE IMPOSSIBLE VALUES, SOME VARIATION IS ALWAYS EXPECTED 
+# remove NAS or impossible values
 
+#cold 
+# do the same for cold
 
 ```
 
 ```{r}
 #| label: T50 normality check 
 #| message: false
+
+# RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL,  JUST MOVE ON TO LINEAR MIXED MODELS 
 ```
 
-if normallity is good - can use linear mixed models
+**STATISTICS - LINEAR MIXED EFFECT MODEL SEPERATELY ON HOT AND COLD T50s**
 
-read csv in acain
+Using linear mixed effect models. T50_hot and T50_cold as response variable for each.
 
-check T50 datasets for NAs and impossible values, remove,
+Fixed effects: month and age_class
 
-check for normality on individual level - only for the model (curve fitting approach i hcose to move forward with) and before runnin statistical tests on the t50 estimates
+Random effect: plant_nr (or is it actually the new_id
 
-**STATISTICS (LINEAR MIXED MODEL?)**
+```{r}
+#| label: hot linear mixed effect model 
+#| message: false
 
-linear mixed effect model (separately or together for each hot/cold and ecah hypothesis?) \<- lmer(T50) \~ month \* age_class\* + (1\|id)
+# hot linear mixed effect model
+lmer(T50_hot) ~ month * age_class* + (1|plant_nr)
+
+```
+
+```{r}
+#| label: cold linear mixed effect model 
+#| message: false
+
+# hot linear mixed effect model
+lmer(T50_cold) ~ month * age_class* + (1|plant_nr)
+
+```
 
 anova?
 
@@ -690,7 +868,7 @@ residuals
 
 post hoc
 
-Make one big T50 table for thesis.
+Make one big T50 table for thesis?
 
 table w p-values sgnificance etc.
 
