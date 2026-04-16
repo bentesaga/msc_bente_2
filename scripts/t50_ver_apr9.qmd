@@ -661,9 +661,15 @@ htol_20_clean_t50_ci <- purrr::map_dfr(names(htol_20_cleaned$results), function(
 
 Realized that January_Pioneer_1 was actually one of the two individuals the model failed to calculate T50 for, so removing this plant explicitly does not affect the group mean T50 whatsoever.
 
-### HOT PSIIHT RUN WITH 500 BOOTS FOR FINAL T50:
+### 500 BOOTS HOT PSIIHT FOR FINAL T50:
 
 Based on findings and conversation with Richard about only one point - that does not affect the mean - could be justified to set to NA, I choose to run the model for T50 hot with all hot FvFm data included.
+
+```{r}
+# test 200 boots 
+htol_summary_200_boots <- summary(htol_500_boots) |> 
+          select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
+```
 
 ```{r}
 #| label: hot 500 boots
@@ -693,10 +699,25 @@ htol_summary_500_boots <- summary(htol_500_boots) |>
 
 autoplot(htol_500_boots) # plots logistic curves and dashed lines for Tcrit, T50, T95 
 
-# Export the hot T50 data when ready
+#extracting the CI for the individual T50 found from bootstrapping
+htol_500_boots_ci <- purrr::map_dfr(names(htol_500_boots$results), function(id) {
+  t50_boots <- htol_500_boots$results[[id]]$T50
+  data.frame(
+    id    = id,
+    T50.mn  = mean(t50_boots, na.rm = TRUE),
+    T50.low = quantile(t50_boots, 0.025, na.rm = TRUE),
+    T50.hi  = quantile(t50_boots, 0.975, na.rm = TRUE)
+  )
+})
 
-# write.csv(
-#  data, here("raw_data", file = "T50_hot.csv"))
+# should probably add columns for age_class, month back in before exporting 
+# maybe CI too
+# Export the hot T50 data when ready
+write.csv(htol_summary_500_boots,
+  here("raw_data", "T50_hot_500_boots.csv"),
+  row.names = FALSE
+)
+
 ```
 
 ## COLD
