@@ -827,6 +827,8 @@ An exponential model could potentially work better based on the shape of the cur
 # use subset going to 50 C appx
 # set theta1 as 0.80 appx
 # set theta2 as 1 or -1 here, need to find out as it
+
+
 ```
 
 ```{r}
