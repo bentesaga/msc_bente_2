@@ -28,7 +28,7 @@ view(clean_data) # check import
 
 ## Mean table and exploratory plot
 
-find out if I want leaf are in here as well
+More for practice of the workflow. Was testing my alternative hypothesis nr 2, but I dont think it is useful for more than supplementary material in any sense. Plot might be useful.
 
 ```{r}
 #| label: exploratory plot 
@@ -173,33 +173,13 @@ df_long |>
 
 ## Log-transformation of data to meet normality assumption
 
-```{r}
+No need to log transform according to Richard.
 
-# Leaf thickness — try log transform to fix the Pioneer November group
-df_traits <- df_traits |>
-  mutate(
-    leaf_thickness_log = log(leaf_thickness_mean),
-    ldmc_log           = log(ldmc),
-    sla_log            = log(sla)
-  )
-```
+## Model fitting 
 
-## Model fitting on log-transformed data
+REMEMBER: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av aldersklasse!! Så må basere modellen på det.
 
-```{r}
-
-library(lme4)
-library(lmerTest)
-
-conflicted::conflicts_prefer(lmerTest::lmer)
-
-# Fit models — using log-transformed versions
-model_thickness <- lmer(leaf_thickness_log ~ age_class * month + (1 | plant_nr), 
-                        data = df_traits)
-model_sla       <- lmer(sla_log ~ age_class * month + (1 | plant_nr), 
-                        data = df_traits)
-model_ldmc      <- lmer(ldmc_log ~ age_class * month + (1 | plant_nr), 
-                        data = df_traits)
+```{}
 ```
 
 ## Check the p-values

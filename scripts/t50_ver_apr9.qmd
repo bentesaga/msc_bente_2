@@ -822,67 +822,145 @@ An exponential model could potentially work better based on the shape of the cur
 
 # FvFm ~ theta1 * exp(theta2 * Temperature)
 # see if i can make adjustments to psiiht so it fits this instead
+
+# try on subset of hot data first to see if it give kind of similar predictions. 
+# use subset going to 50 C appx
+# set theta1 as 0.80 appx
+# set theta2 as 1 or -1 here, need to find out as it
 ```
 
 ```{r}
 #see if setting the few odd values as NA does anything? if not. go with the model full w 500 boots .
 ```
 
-**T50 DATA PROCESSING**
+## **T50 DATA PROCESSING**
+
+#### HOT
 
 ```{r}
 #| label: T50 data import
 #| message: false
 
-# read in hot and cold csvs from raw data? folder 
+T50_hot <- read.csv(here("raw_data", "T50_hot_500_boots.csv"))
 
 ```
 
 ```{r}
-#| label: T50 data checking 
+#| label: T50 hot data checking 
 #| message: false
+
 # hot
 summary(T50_hot)              # global check of all individuals
-colSums(is.na(T50_hot))      # see if a lot of NA
+colSums(is.na(T50_hot))      # see if a lot of NA, there are two NAs
 boxplot(T50_hot$T50.mn, main = "T50 Boxplot")  # look at the values
+
+# No values outside the expected range. Two individuals cannot return T50, is NA.
 
 # RICHARD SAID TO ONLY REMOVE IMPOSSIBLE VALUES, SOME VARIATION IS ALWAYS EXPECTED 
 # remove NAS or impossible values
 
-#cold 
-# do the same for cold
+
+# RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL,  JUST MOVE ON TO LINEAR MIXED MODELS
 
 ```
 
+All T50 estimates are in the rage between 49.55 C - 55.27 C, this is reasonable. Two individuals returns NA, this is where the model could not fit T50 estimates.
+
+#### Preparing hot T50 data for analysis
+
 ```{r}
-#| label: T50 normality check 
+#| label: preparing T50 data 
+#| message: false
+#adding columns for month, age class, id for analysis
+T50_hot <- T50_hot |> 
+  separate(
+    id,
+    into = c("month", "age_class", "plant_nr"),
+    sep = "_",
+    remove = FALSE   # keeps the original id column
+  ) |> 
+  mutate(plant_nr = as.numeric(plant_nr)) |> # plant number as numeric
+  rename(T50 = T50.mn) |>  # rename T50 column
+  na.omit() # remove rows with NA
+
+```
+
+#### Hot group level visualization plot
+
+```{r}
+#| label: group level visualisation 
 #| message: false
 
-# RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL,  JUST MOVE ON TO LINEAR MIXED MODELS 
+# grouping T50 by month x age_class
+T50_hot_grouped <- T50_hot |> 
+  group_by(month, age_class) |> 
+  mutate(month = factor(month, levels = c("November", "January"))) |> 
+  # do the same for age class
+  summarise(
+    n = n(), # see how many individuals are used in calculating mean T50
+    mean_T50 = mean(T50),
+    SD = sd(T50),
+    SE = SD / sqrt(n),
+    .groups = "drop"
+  )
+# n = 7 for January x pioneer and January x building, all others have n = 8 
+
+# visualisation plot to see how T50 varies with month and age class and possible interactions
+ggplot(T50_hot_grouped, aes(x = month, y = mean_T50, color = age_class, group = age_class)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_T50 - SE, ymax = mean_T50 + SE), width = 0.2) +
+  theme_bw()
+
 ```
 
 **STATISTICS - LINEAR MIXED EFFECT MODEL SEPERATELY ON HOT AND COLD T50s**
 
-Using linear mixed effect models. T50_hot and T50_cold as response variable for each.
+Using linear models. T50_hot and T50_cold as response variable for each.
 
-Fixed effects: month and age_class
-
-Random effect: plant_nr (or is it actually the new_id
+Fixed effects: month and age_class. Random effect: none as each plant is reduced to one T50-value now, the random effect is not needed.
 
 ```{r}
 #| label: hot linear mixed effect model 
 #| message: false
 
-# hot linear mixed effect model
-lmer(T50_hot) ~ month * age_class* + (1|plant_nr)
+hot_model <- lm(T50 ~ month + age_class, data = T50_hot) 
+# use * if I want to take interaction into account, but if not keep +, no need to include interaction if not needed, as with current hypothesis
+
+# can use a linear model as we now only have one T50 value for each individual
+# no need to include the random affect of individual here.  
+
+anova(hot_model) #look at and report results
+summary(hot_model) # look at and report results
+```
+
+```{r}
+
+# residuals for T50 hot model 
+plot(hot_model, main = "T50 Hot - Residuals vs Fitted")
+qqnorm(resid(hot_model), main = "T50 Hot - QQ Plot")
+qqline(resid(hot_model))
+
+# residuals are randomly scattered around mean
+# points distributed in a straight line in qq-plot
+# normality fine!
+
+#emmeans? no
+#post hoc?
+
+#look at preformance package hilsen richard! from bio 300 
+
 
 ```
+
+If results from preformance package looks good, then everything is fine!
 
 ```{r}
 #| label: cold linear mixed effect model 
 #| message: false
 
 # hot linear mixed effect model
+# no, use lm here just as for hot! 
 lmer(T50_cold) ~ month * age_class* + (1|plant_nr)
 
 ```
