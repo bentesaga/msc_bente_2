@@ -859,11 +859,8 @@ boxplot(T50_hot$T50.mn, main = "T50 Boxplot")  # look at the values
 # No values outside the expected range. Two individuals cannot return T50, is NA.
 
 # RICHARD SAID TO ONLY REMOVE IMPOSSIBLE VALUES, SOME VARIATION IS ALWAYS EXPECTED 
-# remove NAS or impossible values
-
-
-# RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL,  JUST MOVE ON TO LINEAR MIXED MODELS
-
+# RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL
+# JUST MOVE ON TO LINEAR MODELS
 ```
 
 All T50 estimates are in the rage between 49.55 C - 55.27 C, this is reasonable. Two individuals returns NA, this is where the model could not fit T50 estimates.
@@ -897,8 +894,9 @@ T50_hot <- T50_hot |>
 T50_hot_grouped <- T50_hot |> 
   group_by(month, age_class) |> 
   mutate(month = factor(month, levels = c("November", "January"))) |> 
-  # do the same for age class
-  summarise(
+  mutate(age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer", 
+                                  "Building", "Mature"))) |> 
+    summarise(
     n = n(), # see how many individuals are used in calculating mean T50
     mean_T50 = mean(T50),
     SD = sd(T50),
@@ -908,6 +906,7 @@ T50_hot_grouped <- T50_hot |>
 # n = 7 for January x pioneer and January x building, all others have n = 8 
 
 # visualisation plot to see how T50 varies with month and age class and possible interactions
+
 ggplot(T50_hot_grouped, aes(x = month, y = mean_T50, color = age_class, group = age_class)) +
   geom_point() +
   geom_line() +
@@ -916,46 +915,47 @@ ggplot(T50_hot_grouped, aes(x = month, y = mean_T50, color = age_class, group = 
 
 ```
 
-**STATISTICS - LINEAR MIXED EFFECT MODEL SEPERATELY ON HOT AND COLD T50s**
+### **STATISTICS - LINEAR MODEL SEPERATELY ON HOT AND COLD T50s**
 
 Using linear models. T50_hot and T50_cold as response variable for each.
 
 Fixed effects: month and age_class. Random effect: none as each plant is reduced to one T50-value now, the random effect is not needed.
 
+Using a two-way ANOVA
+
+#### Hot T50 linear model 
+
 ```{r}
-#| label: hot linear mixed effect model 
+#| label: hot linear model 
 #| message: false
 
+# linear model for T50 with month and age class as fixed effects 
 hot_model <- lm(T50 ~ month + age_class, data = T50_hot) 
 # use * if I want to take interaction into account, but if not keep +, no need to include interaction if not needed, as with current hypothesis
 
-# can use a linear model as we now only have one T50 value for each individual
-# no need to include the random affect of individual here.  
-
 anova(hot_model) #look at and report results
 summary(hot_model) # look at and report results
+
+# summed up: heat tolerance appox 2 C higher in January than in November
+# month have a significant effect on T50 hot***
+# age class have NO significant effect on T50 hot
 ```
+
+#### Checking model performance 
 
 ```{r}
+#| label: checking model preformance 
+#| message: false
 
-# residuals for T50 hot model 
-plot(hot_model, main = "T50 Hot - Residuals vs Fitted")
-qqnorm(resid(hot_model), main = "T50 Hot - QQ Plot")
-qqline(resid(hot_model))
+library(performance)
+check_model(hot_model)  
 
-# residuals are randomly scattered around mean
-# points distributed in a straight line in qq-plot
-# normality fine!
-
-#emmeans? no
-#post hoc?
-
-#look at preformance package hilsen richard! from bio 300 
-
+# all panels good; except some slight deviations form whats excpected in influential observations. 
+# still within reasonable limits. 
 
 ```
 
-If results from preformance package looks good, then everything is fine!
+Results from preformance model check is OK, hot model is done!
 
 ```{r}
 #| label: cold linear mixed effect model 
