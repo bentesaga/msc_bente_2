@@ -12,6 +12,9 @@ editor: visual
 
 library(tidyverse)
 library(here)
+library(ggplot2)
+library(reshape2)
+
 ```
 
 ## Data import
@@ -20,15 +23,24 @@ library(here)
 #| label: data import 
 #| message: false
 
-clean_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Tolerance_Bente_Msc.csv")) 
-  filter
+# clean data import, selecting proj_2025 = traits, and only relevant columns
+trait_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Tolerance_Bente_Msc.csv")) |>
+  dplyr::filter(proj_2025 == "Traits") |>
+  dplyr::select(proj_2025, month, age_class, plant_nr, 
+                                remark, leaf_thickness_mean, sla, ldmc) |> 
+  dplyr::mutate(id = paste(month, age_class, plant_nr, sep = "_"))
 
-view(clean_data) # check import 
+# implort hot T50 data
+T50_hot_data <- read.csv(here("raw_data", "T50_hot_500_boots.csv")) |> 
+   rename(T50 = T50.mn)  # rename T50 column
+
+# should this have more info included when saved earlier?
+
 ```
 
-## Mean table and exploratory plot
+## Mean table and exploratory plot traits
 
-More for practice of the workflow. Was testing my alternative hypothesis nr 2, but I dont think it is useful for more than supplementary material in any sense. Plot might be useful.
+More for practice of the workflow. Was testing my alternative hypothesis nr 2, but I do not think it is useful for more than supplementary material in any case. Plot might be useful still, so keeping it for now.
 
 ```{r}
 #| label: exploratory plot 
@@ -44,13 +56,13 @@ trait_labels <- c(
   ldmc                = "LDMC (mg/g)"
 )
  
-df_traits <- clean_data |>
+df_traits <- trait_data |>
   filter(proj_2025 == "Traits") |>
   select(plant_nr, age_class, month, all_of(traits)) |>   # keep relevant cols
   mutate(
     month     = factor(month,     levels = c("November", "January"), # adjusting levels for fig
                        labels = c("November", "January")),
-    age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer", 
+    age_class = factor(age_class, levels = c( "Newly Burnt", "Pioneer", 
                                              "Building", "Mature"))                           
   )
 
@@ -153,94 +165,221 @@ print(traits_plotted) # must be run in the console
  
 ```
 
-Leaf thickness big spread, no clear trends visually. Maybe generally somewhat thicker in January, except for pio.
+## Trait means for each plant individual
 
-SLA clearly higher for Newly Burnt than for the other age classes. Looks relative stable between seasons.
+Before combining with T50 data, have to reduce the 5 measurements per individual to one mean value. As T50 data only have one value per individual.
 
-Looks like LDMC is clearly higher in November than in January. Also increasing with age potentially.
+```{r}
+#| label: means per individual plant  
+#| message: false
 
-Have to test if there is actually significant difference between groups. Want to compare using a LMM, must check if normality assumption is met first.
+# collapsing the five (or four) measurements of traits per individual id plant, into the mean of them
+trait_data_means <- trait_data |>
+  dplyr::group_by(id, month, age_class, plant_nr) |>
+  dplyr::summarise(
+    leaf_thickness_mean = mean(leaf_thickness_mean, na.rm = TRUE),
+    sla = mean(sla, na.rm = TRUE),
+    ldmc = mean(ldmc, na.rm = TRUE),
+    .groups = "drop"
+  )
 
-## Check if normality assumption is met
+```
+
+## Correlation matrix between traits
+
+Only problematic if correlation is above 0.7-0.9.
+
+```{r}
+#| label: correlation matrix   
+#| message: false
+
+# correlation matrix NOT taking month into account 
+trait_cor <- trait_data_means |>
+  dplyr::select(leaf_thickness_mean, sla, ldmc) |>
+  cor(use = "complete.obs")
+
+trait_cor # all within +/- 0.7 so no problematic correlations for lm model later
+
+#correlation matrix taking month into account
+trait_cor_by_month <- trait_data_means |>
+  dplyr::group_by(month) |>
+  dplyr::group_map(~ {
+    cor(
+      dplyr::select(.x, leaf_thickness_mean, sla, ldmc),
+      use = "complete.obs"
+    )
+  })
+
+trait_cor_by_month #  all within +/- 0.7 so no problematic correlations for lm model later
+# sla and ldmc moderately negatively correlated around -0.6, as expected 
+
+```
+
+## HOT
+
+## Joining T50 hot data to trait data
+
+```{r}
+#| label: joining data frames   
+#| message: false
+
+# joining tarit means data frame with T50 hot dataframe by id column
+trait_T50_hot <- trait_summary |>
+  dplyr::left_join(T50_hot_data, by = "id") |> 
+   mutate(month = factor(month, levels = c("November", "January"))) |> 
+  na.omit() # remove rows with NA
+
+```
+
+## Exploratory plots: T50 hot against each trait
+
+```{r}
+#| label: exploratory plots    
+#| message: false
+
+# faceting by month, as that cold mask trends 
+
+# mean thickness vs T50 hot
+thickness_vs_T50_hot <- ggplot(trait_T50_hot, aes(x = leaf_thickness_mean, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "Leaf thickness", y = "T50") +
+  theme_minimal()
+
+thickness_vs_T50_hot 
+# when not faceted by month: slight increase in T50 hot with increased thickness
+# as expected
+# when faceted by month: January relative flat relationship, November increased thickness corresponds to decreased T50. not as expected. 
+
+# mean sla vs T50 hot
+sla_vs_T50_hot <- ggplot(trait_T50_hot, aes(x = sla, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "SLA", y = "T50") +
+  theme_minimal()
+
+sla_vs_T50_hot 
+# when NOT faceted by month: slight increase in T50 hot with increased sla,
+# not as expected. maybe the very high sla group jan_nb_1 influences this
+# when faceted by month: January increased sla corresponds to increased T50, not expected. November flat relationship
+
+
+# mean ldmc vs T50 hot
+ldmc_vs_T50_hot <- ggplot(trait_T50_hot, aes(x = ldmc, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "LDMC", y = "T50") +
+  theme_minimal()
+
+ldmc_vs_T50_hot 
+# when NOT faceted by month: decrease in T50 hot with increased ldmc, not expected
+# when faceted by month: Janury increased ldmc relate to decreased T50, not expected. November increased ldmc relate to slight increase in T50. 
+
+```
+
+## Linear model for traits vs T50
+
+Checking if traits correlate with T50 **independent** of time and age class.
+
+```{r}
+#| label: linear model   
+#| message: false
+
+# linear model for T50 response to triats, no interactions included
+lm_traits_T50_hot <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class, data = trait_T50_hot) 
+
+anova(lm_traits_T50_hot) #look at and report results
+summary(lm_traits_T50_hot) # look at and report results
+
+# summed up: no significant effects of any of these traits, again no effect of age class.
+# as for original T50 model: month significant predictor!
+```
+
+## Checking model performance
+
+```{r}
+#| label: checking model preformance 
+#| message: false
+
+library(performance)
+check_model(lm_traits_T50_hot)  
+
+# all panels look good
+# especially important to note: was concerned about month possibly masking effects of traits, but based on relatively low collinearity this should not be a problem
+# model might hold as is
+```
+
+NOTE/QUESTION: Despite the model diagnostics looking good, the plots of traits vs T50 faceted by month show relationships in opposite directions. Is this reason to worry? Need to investigate.
+
+## Model comparisons - with/without interactions
+
+```{r}
+#| label: comparing models
+#| message: false
+
+# checking if adding interctions makes the model better
+# month interaction taken into account for all traits
+lm_T50_interactions <- lm(
+  T50 ~ (sla + leaf_thickness_mean + ldmc) * month + age_class,
+  data = trait_T50_hot
+)
+summary(lm_T50_interactions)
+
+model_main <- lm(
+  T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class,
+  data = trait_T50_hot
+)
+
+anova(model_main, lm_T50_interactions) # p-value above 0.05, not significant. Not useful to take interactions for all traits into account. 
+
+# only interaction for thickness * month
+lm_thick_int <- lm(
+  T50 ~ leaf_thickness_mean * month + sla + ldmc + age_class,
+  data = trait_T50_hot
+)
+
+anova(model_main, lm_thick_int) # p-value above 0.05, not significant. Not useful to take interactions for all traits into account. 
+
+# only interaction for sla * month
+lm_sla_int <- lm(
+  T50 ~ sla * month + leaf_thickness_mean + ldmc + age_class,
+  data = trait_T50_hot
+)
+
+anova(model_main, lm_sla_int) # p-value above 0.05, not significant. Not useful to take interactions for all traits into account. 
+
+# only interaction for ldmc * month
+lm_ldmc_int <- lm(
+  T50 ~ ldmc * month + sla + leaf_thickness_mean + age_class,
+  data = trait_T50_hot
+)
+
+anova(model_main, lm_ldmc_int) # p-value under 0.05, significant, barely. Adding an interaction term here makes the model better.
+# should consider including the interaction in the main model. 
+```
+
+NEED TO DECIDE IF I WANT TO ADD INTERACTION INTO MODEL. Come back to this.
+
+## Export model output
 
 ```{r}
 
-df_long |>
-  dplyr::filter(trait %in% c("leaf_thickness_mean", "sla", "ldmc")) |>
-  group_by(trait, age_class, month) |>
-  summarise(shapiro_p = shapiro.test(value)$p.value)
 ```
 
-## Log-transformation of data to meet normality assumption
+## Clean final visualisation plot 
+
+```{r}
+
+# plot for each trait x t50 hot. facet by month and trait, giving 6 panels. 
+```
 
 No need to log transform according to Richard.
 
-## Model fitting 
+HUSK: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av måned og aldersklasse! Så må basere modellen på det.
 
-REMEMBER: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av aldersklasse!! Så må basere modellen på det.
+## COLD 
 
-```{}
-```
-
-## Check the p-values
-
-```{r}
-
-
-# Get ANOVA-style p-values for each term
-# This is NOT actually an ANOVA, just gives readable output on the same format
-
-anova(model_thickness)
-anova(model_sla)
-anova(model_ldmc)
-```
-
-clearly significant for age class and month seperatly for thickness and sla, and ldmc less
-
-interaction term less so for ldmc
-
-## Checking residuals
-
-Using residuals vs fitted - if normality then points should be scattered randomly
-
-Using QQ-plot - points should be on a straight line, heavy tails can indicate problems
-
-```{r}
-
-# Leaf thickness
-plot(model_thickness, main = "Leaf Thickness - Residuals vs Fitted") # looks good
-qqnorm(resid(model_thickness), main = "Leaf Thickness - QQ Plot") #looks good
-qqline(resid(model_thickness))
-
-# SLA
-plot(model_sla, main = "SLA - Residuals vs Fitted") #looks good
-qqnorm(resid(model_sla), main = "SLA - QQ Plot") #looks good
-qqline(resid(model_sla))
-
-# LDMC
-plot(model_ldmc, main = "LDMC - Residuals vs Fitted") #looks good
-qqnorm(resid(model_ldmc), main = "LDMC - QQ Plot") # has heavy tails, but ok
-qqline(resid(model_ldmc))
-```
-
-## Post-hoc tests
-
-Pairwise comparisons within month, within age class.
-
-```{r}
-# comparing pairwise 
-
-library(emmeans)
-
-# Compare age classes within each month
-emmeans(model_thickness, pairwise ~ age_class | month, adjust = "tukey")
-emmeans(model_sla,       pairwise ~ age_class | month, adjust = "tukey")
-emmeans(model_ldmc,      pairwise ~ age_class | month, adjust = "tukey")
-
-# Compare months within each age class
-emmeans(model_thickness, pairwise ~ month | age_class, adjust = "tukey")
-emmeans(model_sla,       pairwise ~ month | age_class, adjust = "tukey")
-emmeans(model_ldmc,      pairwise ~ month | age_class, adjust = "tukey")
-```
-
-Big output, need to look into later.
+Same workflow for cold T50 data once I have it.
