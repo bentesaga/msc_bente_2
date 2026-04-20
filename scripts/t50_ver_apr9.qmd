@@ -33,7 +33,7 @@ clean_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Toleranc
 view(clean_data) # check import 
 ```
 
-#### Levels
+#### Levels - need to change  manes of age classes at some point!
 
 ```{r}
 #| label: levels 
@@ -58,17 +58,16 @@ clean_data$month <- factor((clean_data$month),
 hot_subset <- clean_data |> 
   filter(proj_2025 == "TT Hot") |> # filter for TT Hot
   filter(!is.na(fv_fm_final)) |>  # removing row with NA for fv_fm_final
-   select(month, age_class, plant_nr, temp_exp, fv_fm_final)
+   select(month, age_class, plant_nr, temp_exp, fv_fm_final, unique_plant_id)
 
 
 # making cold subset all clean data
 cold_subset <- clean_data |> 
   filter(proj_2025 == "TT Cold")|> # filter for TT Cold 
   filter(!is.na(fv_fm_final)) |>  # removing row with NA for fv_fm_final
-   select(month, age_class, plant_nr, temp_exp, fv_fm_final)
+   select(month, age_class, plant_nr, temp_exp, fv_fm_final, unique_plant_id)
 
 # filter further if certain datapoints or whole individuals should be taken out. 
-   #filter(is.na(remark) | !str_detect(remark, "; curve")) |> #add filter like this
 ```
 
 ## HOT
@@ -516,8 +515,6 @@ So points could be set as NA without big differences in T50 results on group lev
 
 Prop_success stays relatively similar - except for November_Building_2 which is reduced from 0.84 to 0.5. Likely because there is less points to choose from after setting NA.
 
-NB: CANNOT SEE THE LAST TWO INDIVIDUAL IN THE SUMMARIES - WHY?
-
 #### JANUARY SUBSET CLEANED COMPARED TO RAW
 
 do the same as above for january data. more weird points that needs adressing here. maybe better to run on subsets instead of all january data at once
@@ -605,7 +602,7 @@ jan_cleaned_t50_ci <- purrr::map_dfr(names(htol_nov_cleaned$results), function(i
 })
 ```
 
-MODEL FAILS WHEN CONTROL TEMPERATURE IS SET TO NA. Beacause the T50 is calculated based on the starting value at control. If control is missing, it cannot calculate T50.
+MODEL FAILS WHEN CONTROL TEMPERATURE IS SET TO NA. Because the T50 is calculated based on the starting value at control. If control is missing, it cannot calculate T50.
 
 #### EXPLORATORY: COMPARISON OF DATA AFTER TALKING TO RICHARD 16/4
 
@@ -663,13 +660,7 @@ Realized that January_Pioneer_1 was actually one of the two individuals the mode
 
 ### 500 BOOTS HOT PSIIHT FOR FINAL T50:
 
-Based on findings and conversation with Richard about only one point - that does not affect the mean - could be justified to set to NA, I choose to run the model for T50 hot with all hot FvFm data included.
-
-```{r}
-# test 200 boots 
-htol_summary_200_boots <- summary(htol_500_boots) |> 
-          select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
-```
+Based on findings and conversation with Richard about only one point - that does not affect the mean - could be justified to set to NA, I choose to run the model for T50 hot with all hot Fv/Fm data included.
 
 ```{r}
 #| label: hot 500 boots
@@ -711,7 +702,7 @@ htol_500_boots_ci <- purrr::map_dfr(names(htol_500_boots$results), function(id) 
 })
 
 # should probably add columns for age_class, month back in before exporting 
-# maybe CI too
+# maybe CI too? 
 # Export the hot T50 data when ready
 write.csv(htol_summary_500_boots,
   here("raw_data", "T50_hot_500_boots.csv"),
@@ -776,7 +767,7 @@ January low starting values - many - but this seems like a general trend. So may
 united_columns_cold <- unite(
   cold_subset,
   col = "new_id", 
-  month, age_class, plant_nr, # now fitting nls for each individual plant
+  month, age_class, #plant_nr, # now fitting nls for each individual plant
   sep = "_",
   remove = TRUE
 )
@@ -812,12 +803,12 @@ struggles to make curves, especially for jan as fvfm is not dropping low enough.
 
 ALTERNATIVELY: RICHARD RECCOMENDS TO TRY WITH AN EXPONENTIAL MODEL INSTEAD OF USING PSIIHT
 
-#### Exploratory: EXPONENTIAL MODEL 
+#### Exploratory: EXPONENTIAL MODEL
 
 An exponential model could potentially work better based on the shape of the curves for cold data.
 
 ```{r}
-#| label: exponential model for cold
+#| label: exponential model for cold testing 
 #| message: false
 
 # FvFm ~ theta1 * exp(theta2 * Temperature)
@@ -829,10 +820,69 @@ An exponential model could potentially work better based on the shape of the cur
 # set theta2 as 1 or -1 here, need to find out as it
 
 
+# testing for hot first 
+
+library(conflicted)
+conflicts_prefer(dplyr::filter)
+# Filter hot subset to temperatures 20-48
+
+# Filter hot subset to temperatures 20-48
+hot_exp <- hot_subset |>
+  dplyr::filter(temp_exp >= 20 & temp_exp <= 48)
+
+# Test on one individual first
+test_plant <- hot_exp |>
+  dplyr::filter(unique_plant_id == "Newly Burnt_November_4")
+
+
+# For hot data: FvFm declines with temperature, so theta2 is negative
+fit_hot_simple <- nls(
+  fv_fm_final ~ theta0 + theta1 * exp(theta2 * -temp_exp),
+  data    = test_plant,
+  start   = list(theta0 = 0.8, theta1 = 0.10, theta2 = -0.1)
+)
+
+summary(fit_hot_simple)
+
+# Extract coefficients
+theta1 <- coef(fit_hot_simple)["theta1"]
+theta2 <- coef(fit_hot_simple)["theta2"]
+
+# T50: temperature where FvFm = 50% of mean control FvFm
+# Control is the lowest treatment temperature (20°C for hot data)
+half <- mean(test_plant$fv_fm_final[test_plant$temp_exp == 20], na.rm = TRUE) / 2
+
+# Solve: half = theta1 * exp(theta2 * T50)
+# T50 = log(half / theta1) / theta2
+T50 <- log(half / theta1) / theta2
+
+cat("T50:", round(T50, 2), "C\n")
+
+as.numeric(T50)
+
+# Visual check
+plot(test_plant$temp_exp, test_plant$fv_fm_final,
+     xlab = "Temperature", ylab = "Fv/Fm",
+     main = paste("Exponential fit - T50:", round(T50, 2), "C"))
+lines(sort(test_plant$temp_exp),
+      predict(fit_hot_simple,
+              newdata = data.frame(temp_exp = sort(test_plant$temp_exp))),
+      col = "red")
+abline(h = half, lty = 2, col = "blue")   # horizontal line at half
+abline(v = T50,  lty = 2, col = "green")  # vertical line at T50
+
+
+
+# because of the flat starting part of the curve, the explonetial model does not decline enough. returns very high tolerance. 
+
+# same will probably happen to cold as the curves start (or even the full curve) if pretty flat too. 
 ```
+
+NOTE 20/4: RICHARD IS TRYING TO FIND OUT IF THERE ARE ANY OTHER MODELS THAT FITS BETTER TO THE COLD DATA SO CURVES AND T50s CAN BE ESTIMATED ON THE INDIVIDUAL LEVEL HERE TOO.
 
 ```{r}
 #see if setting the few odd values as NA does anything? if not. go with the model full w 500 boots .
+
 ```
 
 ## **T50 DATA PROCESSING**
@@ -851,10 +901,9 @@ T50_hot <- read.csv(here("raw_data", "T50_hot_500_boots.csv"))
 #| label: T50 hot data checking 
 #| message: false
 
-# hot
 summary(T50_hot)              # global check of all individuals
 colSums(is.na(T50_hot))      # see if a lot of NA, there are two NAs
-boxplot(T50_hot$T50.mn, main = "T50 Boxplot")  # look at the values
+
 
 # No values outside the expected range. Two individuals cannot return T50, is NA.
 
@@ -923,7 +972,7 @@ Fixed effects: month and age_class. Random effect: none as each plant is reduced
 
 Using a two-way ANOVA
 
-#### Hot T50 linear model 
+#### Hot T50 linear model
 
 ```{r}
 #| label: hot linear model 
@@ -941,7 +990,7 @@ summary(hot_model) # look at and report results
 # age class have NO significant effect on T50 hot
 ```
 
-#### Checking model performance 
+#### Checking model performance
 
 ```{r}
 #| label: checking model preformance 
@@ -955,7 +1004,15 @@ check_model(hot_model)
 
 ```
 
-Results from preformance model check is OK, hot model is done!
+Results from performance model check is OK, hot model is done!
+
+#### Export model result in a table
+
+```{r}
+
+```
+
+#### COLD
 
 ```{r}
 #| label: cold linear mixed effect model 
