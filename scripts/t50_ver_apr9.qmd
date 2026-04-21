@@ -757,7 +757,7 @@ Other November notes: Newly Burnt_3, Pioneer_7, Pioneer_5, Building_2, Mature_2 
 
 January low starting values - many - but this seems like a general trend. So maybe not problematic, but meaningful biologically. Many very bumpy lines, especially Pioneer_4 which dies at -15 and comes back to life.
 
-### FREEZING RESPONSE CURVES AND LT50 - ALL CLEAN DATA INCLUDED
+### Exploratory: FREEZING RESPONSE CURVES AND T50 - group level
 
 ```{r}
 #| label: psiiht for cold
@@ -767,7 +767,7 @@ January low starting values - many - but this seems like a general trend. So may
 united_columns_cold <- unite(
   cold_subset,
   col = "new_id", 
-  month, age_class, #plant_nr, # now fitting nls for each individual plant
+  month, age_class, #plant_nr, # now fitting nls for each age_class x month
   sep = "_",
   remove = TRUE
 )
@@ -791,98 +791,203 @@ united_columns_cold |> ggplot(aes(x = temp_exp, y = fv_fm_final)) +
   geom_point() +
   facet_wrap(vars(new_id))
 
-# struggles to fit lines to the data (does not reach the T-values)
+# struggles to fit lines to the data when run in(does not reach the T-values)
 # return NaN for most of the January individuals
 # bigger chance for success of fitting curve for november ones, but most have a low prop_success, so the results are biased. tolerance might therefore be even lower. 
 # how to deal with this - will end up with very little data if removing rows where nls cant be fit
 ```
 
-NOW ONLY WORKING IF RUN ON GROUP LEVEL
+Model only works of run on group level. Even for group level estimates, it is missing T50s for January mature and newly burnt. Entails that these are the most problematic to model. Makes sense when comparing to raw data plots, does not drop low enough to calculate T50. Will try to run model on month x age class subsets to see if that works.
 
-struggles to make curves, especially for jan as fvfm is not dropping low enough. biologically useful information, statistically not so much. can then present the raw data and show that there is not much of a decline, while this means that we did not test for low enough temps for the model to fit t50 cold. also present table of which plants did get a value. also important to report prop_success!
+#### Exploratory: Exponantial model
 
-ALTERNATIVELY: RICHARD RECCOMENDS TO TRY WITH AN EXPONENTIAL MODEL INSTEAD OF USING PSIIHT
+An exponential model could potentially work better based on the shape of the curves for cold data. Does NOT work. Chunk removed. NOTE 21/4: Decided to not move forward with that.
 
-#### Exploratory: EXPONENTIAL MODEL
-
-An exponential model could potentially work better based on the shape of the curves for cold data.
+#### Exploratory: Running on month x age_class groups sepearately to see which ones break
 
 ```{r}
-#| label: exponential model for cold testing 
+#| label: separate runs for ageclass x month groups
 #| message: false
 
-# FvFm ~ theta1 * exp(theta2 * Temperature)
-# see if i can make adjustments to psiiht so it fits this instead
+# Filter for for month + age class + eventually in/out individuals to check where the problems come from.
+cold_test <- cold_subset |> 
+  filter(month == "November", age_class == "Newly Burnt")
 
-# try on subset of hot data first to see if it give kind of similar predictions. 
-# use subset going to 50 C appx
-# set theta1 as 0.80 appx
-# set theta2 as 1 or -1 here, need to find out as it
-
-
-# testing for hot first 
-
-library(conflicted)
-conflicts_prefer(dplyr::filter)
-# Filter hot subset to temperatures 20-48
-
-# Filter hot subset to temperatures 20-48
-hot_exp <- hot_subset |>
-  dplyr::filter(temp_exp >= 20 & temp_exp <= 48)
-
-# Test on one individual first
-test_plant <- hot_exp |>
-  dplyr::filter(unique_plant_id == "Newly Burnt_November_4")
-
-
-# For hot data: FvFm declines with temperature, so theta2 is negative
-fit_hot_simple <- nls(
-  fv_fm_final ~ theta0 + theta1 * exp(theta2 * -temp_exp),
-  data    = test_plant,
-  start   = list(theta0 = 0.8, theta1 = 0.10, theta2 = -0.1)
+# update unite as well
+united_columns_cold_test <- unite(
+  cold_test,
+  col = "new_id",
+  month, age_class, plant_nr,
+  sep = "_",
+  remove = TRUE
 )
 
-summary(fit_hot_simple)
+# run psiiht
+set.seed(8)
+ctol_test <- psiiht(temperature = united_columns_cold_test$temp_exp,
+                   warming = FALSE,
+                   fvfm = united_columns_cold_test$fv_fm_final,
+                   control_temp = 5,
+                   id = united_columns_cold_test$new_id,
+                   boots = 50)
 
-# Extract coefficients
-theta1 <- coef(fit_hot_simple)["theta1"]
-theta2 <- coef(fit_hot_simple)["theta2"]
+ctol_summary_test <- summary(ctol_nov) |>
+  select(-Tcrit.mn, -T95.mn)
 
-# T50: temperature where FvFm = 50% of mean control FvFm
-# Control is the lowest treatment temperature (20°C for hot data)
-half <- mean(test_plant$fv_fm_final[test_plant$temp_exp == 20], na.rm = TRUE) / 2
+autoplot(ctol_nov)
 
-# Solve: half = theta1 * exp(theta2 * T50)
-# T50 = log(half / theta1) / theta2
-T50 <- log(half / theta1) / theta2
-
-cat("T50:", round(T50, 2), "C\n")
-
-as.numeric(T50)
-
-# Visual check
-plot(test_plant$temp_exp, test_plant$fv_fm_final,
-     xlab = "Temperature", ylab = "Fv/Fm",
-     main = paste("Exponential fit - T50:", round(T50, 2), "C"))
-lines(sort(test_plant$temp_exp),
-      predict(fit_hot_simple,
-              newdata = data.frame(temp_exp = sort(test_plant$temp_exp))),
-      col = "red")
-abline(h = half, lty = 2, col = "blue")   # horizontal line at half
-abline(v = T50,  lty = 2, col = "green")  # vertical line at T50
-
-
-
-# because of the flat starting part of the curve, the explonetial model does not decline enough. returns very high tolerance. 
-
-# same will probably happen to cold as the curves start (or even the full curve) if pretty flat too. 
 ```
 
-NOTE 20/4: RICHARD IS TRYING TO FIND OUT IF THERE ARE ANY OTHER MODELS THAT FITS BETTER TO THE COLD DATA SO CURVES AND T50s CAN BE ESTIMATED ON THE INDIVIDUAL LEVEL HERE TOO.
+November - Newly Burnt (8/8), Pioneer (7/8), Building (7/8) , Mature ((7/8)need to filter out plant_nr 3 before psiiht) works on individual level
+
+January - Newly burnt (0/8) works on no individuals, Pioneer (4/8) only works if filtering out everything but plant_nr 4, 6, 7, 8. Building (1/8) only works on plant 4, Mature (2/8) only works if filtering out plant_nr 4.
+
+After running on subsets of data, it seems like this is the only solution for running cold tolerance on individual plant level.
+
+Will run model separately for each group with 500 boots, filtering out specific individual that break the model if needed.
+
+Important to note that results are uncertain, need to report how many that does converge and the prop_success of those that actually do.
+
+Will have to join the result data frames together after.
+
+### 500 BOOTS COLD PSIIHT FOR FINAL T50:
 
 ```{r}
-#see if setting the few odd values as NA does anything? if not. go with the model full w 500 boots .
+#| label: 500 boots cold T50
+#| message: false
+# make united columns object for each month x age class group
+# filter out specific plant_nr that stops the model from running remaining estimates
 
+# November - Newly Burnt (8/8 estimates expected to work)
+united_nov_nb <- cold_subset |>
+  filter(month == "November", age_class == "Newly Burnt") |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+# November - Pioneer (7/8 estimates expected to work)
+united_nov_pioneer <- cold_subset |>
+  filter(month == "November", age_class == "Pioneer") |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+# November - Building (7/8 estimates expected to work)
+united_nov_building <- cold_subset |>
+  filter(month == "November", age_class == "Building") |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+# November - Mature (7/8 estimates expected to work, if filtering out plant 3)
+united_nov_mature <- cold_subset |>
+  filter(month == "November", age_class == "Mature", !plant_nr %in% c(3)) |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+# January - Newly Burnt (0/8) - SKIPPED, no individuals converge
+
+# January - Pioneer (4/8 estimates expected to work, if filtering for only nr 4, 6, 7, 8)
+united_jan_pioneer <- cold_subset |>
+  filter(month == "January", age_class == "Pioneer", plant_nr %in% c(4, 6, 7, 8)) |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+# January - Building (1/8 estimates expected to work, if filtering for only nr 4)
+united_jan_building <- cold_subset |>
+  filter(month == "January", age_class == "Building", plant_nr %in% c(4)) |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+# January - Mature (2/8 estimates expected to work, filtering out plant 4)
+united_jan_mature <- cold_subset |>
+  filter(month == "January", age_class == "Mature", !plant_nr %in% c(4)) |>
+  unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
+
+
+# running model with 500 boots for each group
+
+set.seed(8)
+
+# November - Newly Burnt (8/8)
+ctol_nov_nb <- psiiht(temperature = united_nov_nb$temp_exp,
+                      warming = FALSE,
+                      fvfm = united_nov_nb$fv_fm_final,
+                      control_temp = 5,
+                      id = united_nov_nb$new_id,
+                      boots = 100)
+
+summary_nov_nb <- summary(ctol_nov_nb) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "November", age_class = "Newly Burnt")
+
+# November - Pioneer (7/8)
+ctol_nov_pioneer <- psiiht(temperature = united_nov_pioneer$temp_exp,
+                            warming = FALSE,
+                            fvfm = united_nov_pioneer$fv_fm_final,
+                            control_temp = 5,
+                            id = united_nov_pioneer$new_id,
+                            boots = 500)
+summary_nov_pioneer <- summary(ctol_nov_pioneer) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "November", age_class = "Pioneer")
+
+# November - Building (7/8)
+ctol_nov_building <- psiiht(temperature = united_nov_building$temp_exp,
+                             warming = FALSE,
+                             fvfm = united_nov_building$fv_fm_final,
+                             control_temp = 5,
+                             id = united_nov_building$new_id,
+                             boots = 500)
+summary_nov_building <- summary(ctol_nov_building) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "November", age_class = "Building")
+
+# November - Mature (7/8)
+ctol_nov_mature <- psiiht(temperature = united_nov_mature$temp_exp,
+                           warming = FALSE,
+                           fvfm = united_nov_mature$fv_fm_final,
+                           control_temp = 5,
+                           id = united_nov_mature$new_id,
+                           boots = 500)
+summary_nov_mature <- summary(ctol_nov_mature) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "November", age_class = "Mature")
+
+# January - Pioneer (4/8)
+ctol_jan_pioneer <- psiiht(temperature = united_jan_pioneer$temp_exp,
+                            warming = FALSE,
+                            fvfm = united_jan_pioneer$fv_fm_final,
+                            control_temp = 5,
+                            id = united_jan_pioneer$new_id,
+                            boots = 500)
+summary_jan_pioneer <- summary(ctol_jan_pioneer) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "January", age_class = "Pioneer")
+
+# January - Building (1/8)
+ctol_jan_building <- psiiht(temperature = united_jan_building$temp_exp,
+                             warming = FALSE,
+                             fvfm = united_jan_building$fv_fm_final,
+                             control_temp = 5,
+                             id = united_jan_building$new_id,
+                             boots = 500)
+summary_jan_building <- summary(ctol_jan_building) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "January", age_class = "Building")
+
+# January - Mature (2/8)
+ctol_jan_mature <- psiiht(temperature = united_jan_mature$temp_exp,
+                           warming = FALSE,
+                           fvfm = united_jan_mature$fv_fm_final,
+                           control_temp = 5,
+                           id = united_jan_mature$new_id,
+                           boots = 500)
+summary_jan_mature <- summary(ctol_jan_mature) |>
+  select(-Tcrit.mn, -T95.mn) |>
+  mutate(month = "January", age_class = "Mature")
+
+# Merge all summaries (excluding January Newly Burnt - 0/8)
+ctol_summary_cold <- bind_rows(
+  summary_nov_nb,
+  summary_nov_pioneer,
+  summary_nov_building,
+  summary_nov_mature,
+  summary_jan_pioneer,
+  summary_jan_building,
+  summary_jan_mature
+)
 ```
 
 ## **T50 DATA PROCESSING**
@@ -974,21 +1079,46 @@ Using a two-way ANOVA
 
 #### Hot T50 linear model
 
+Using a model with interaction to take hypothesis 3 into account. No interaction found, comparing interaction model with no-interaction model.
+
 ```{r}
 #| label: hot linear model 
 #| message: false
 
-# linear model for T50 with month and age class as fixed effects 
-hot_model <- lm(T50 ~ month + age_class, data = T50_hot) 
-# use * if I want to take interaction into account, but if not keep +, no need to include interaction if not needed, as with current hypothesis
+# linear model for T50 with month and age class as fixed effects. 
+# interaction needed to test hypothesis 3
+
+hot_model_interaction <- lm(T50 ~ month * age_class, data = T50_hot) # interaction 
+
+anova(hot_model_interaction) #look at and report results
+summary(hot_model_interaction) # look at and report results
+
+
+# month highly significant (p < 0.001). Hypothesis 1 supported. 
+# age class is not significant (p = 0.18) 
+# month:age_class interaction is non-significant (p = 0.68). Hypothesis 3 not supported. 
+
+# since interaction is not significant, trying model without to see if it is better
+hot_model <- lm(T50 ~ month + age_class, data = T50_hot) # no interaction
 
 anova(hot_model) #look at and report results
 summary(hot_model) # look at and report results
 
-# summed up: heat tolerance appox 2 C higher in January than in November
+# summed up: heat tolerance appox 2 C higher in January than in November. 
 # month have a significant effect on T50 hot***
 # age class have NO significant effect on T50 hot
+
+#comparing model fits 
+anova(hot_model, hot_model_interaction)
+# model not significantly removed by adding interaction
+
+AIC(hot_model, hot_model_interaction) 
+# AIC 195 for nointeraction, 199 for interaction
 ```
+
+By both models: Hypothesis 1 is supported, month have significant effect on T50. No significant effect of age class on T50.
+
+Model with interaction: No interaction between month and age_class, hypothesis 3 NOT supported.
 
 #### Checking model performance
 
@@ -997,14 +1127,19 @@ summary(hot_model) # look at and report results
 #| message: false
 
 library(performance)
-check_model(hot_model)  
+check_model(hot_model_interaction)  
+# collionearity is a clear problem here. 
+# the interaction term increase variance in parameter estimates, making coefficients less reliable. 
+# better to use the model with no interaction!
 
+
+check_model(hot_model)  
 # all panels good; except some slight deviations form whats excpected in influential observations. 
 # still within reasonable limits. 
 
 ```
 
-Results from performance model check is OK, hot model is done!
+Results from performance model check is OK for model WITHOUT interaction. I would opt for that one as it is simpler. Need confirmation if this is ok, or if the interaction model is fine anyway.
 
 #### Export model result in a table
 
