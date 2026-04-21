@@ -359,6 +359,11 @@ lm_ldmc_int <- lm(
 
 anova(model_main, lm_ldmc_int) # p-value under 0.05, significant, barely. Adding an interaction term here makes the model better.
 # should consider including the interaction in the main model. 
+
+check_model(lm_ldmc_int) # high collinearity, may inflate uncertanty. 
+#preformance better if model without interaction
+
+AIC(lm_traits_T50_hot, lm_ldmc_int) # slightly better for the interaction included
 ```
 
 NEED TO DECIDE IF I WANT TO ADD INTERACTION INTO MODEL. Come back to this.
@@ -369,7 +374,7 @@ NEED TO DECIDE IF I WANT TO ADD INTERACTION INTO MODEL. Come back to this.
 
 ```
 
-## Clean final visualisation plot 
+## Clean final visualisation plot
 
 ```{r}
 
@@ -380,6 +385,6 @@ No need to log transform according to Richard.
 
 HUSK: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av måned og aldersklasse! Så må basere modellen på det.
 
-## COLD 
+## COLD
 
 Same workflow for cold T50 data once I have it.
