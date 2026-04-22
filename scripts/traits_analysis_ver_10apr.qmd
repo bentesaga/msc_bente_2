@@ -495,3 +495,31 @@ check_model(lm_traits_T50_cold)  # linearity, homogenity not very good
 
 check_model(lm_traits_T50_cold_nov)  # a bit better 
 ```
+
+Already low n = 28 and 5/6 predictors, so maybe not wise to add interactions.
+
+```{r}
+#| label: comparing models
+#| message: false
+
+# month x ldmc (mirrors hot model)
+lm_cold_ldmc_int <- lm(T50 ~ ldmc * month + sla + leaf_thickness_mean + age_class,
+                        data = trait_T50_cold)
+
+# month x leaf thickness (biologically motivated given leaf thickness was borderline)
+lm_cold_lt_int <- lm(T50 ~ leaf_thickness_mean * month + sla + ldmc + age_class,
+                      data = trait_T50_cold)
+
+# month x sla
+lm_cold_sla_int <- lm(T50 ~ sla * month + leaf_thickness_mean + ldmc + age_class,
+                       data = trait_T50_cold)
+
+# compare all
+AIC(lm_traits_T50_cold,
+    lm_cold_ldmc_int,
+    lm_cold_lt_int,
+    lm_cold_sla_int)
+
+# none of these options are better
+
+```
