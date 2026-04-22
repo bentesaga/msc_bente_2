@@ -33,7 +33,7 @@ clean_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Toleranc
 view(clean_data) # check import 
 ```
 
-#### Levels - need to change  manes of age classes at some point!
+#### Levels - need to change manes of age classes at some point!
 
 ```{r}
 #| label: levels 
@@ -786,14 +786,8 @@ ctol_summary_all <- summary(ctol) |>
 
 autoplot(ctol) # plots logistic curves and dashed lines for Tcrit, T50, T95 
 
-# creating separate scatterplot to see datapoints without curves
-united_columns_cold |> ggplot(aes(x = temp_exp, y = fv_fm_final)) +
-  geom_point() +
-  facet_wrap(vars(new_id))
 
 # struggles to fit lines to the data when run in(does not reach the T-values)
-# return NaN for most of the January individuals
-# bigger chance for success of fitting curve for november ones, but most have a low prop_success, so the results are biased. tolerance might therefore be even lower. 
 # how to deal with this - will end up with very little data if removing rows where nls cant be fit
 ```
 
@@ -803,7 +797,7 @@ Model only works of run on group level. Even for group level estimates, it is mi
 
 An exponential model could potentially work better based on the shape of the curves for cold data. Does NOT work. Chunk removed. NOTE 21/4: Decided to not move forward with that.
 
-#### Exploratory: Running on month x age_class groups sepearately to see which ones break
+#### Exploratory: Running on month x age_class groups separately to see which ones break
 
 ```{r}
 #| label: separate runs for ageclass x month groups
@@ -834,13 +828,15 @@ ctol_test <- psiiht(temperature = united_columns_cold_test$temp_exp,
 ctol_summary_test <- summary(ctol_nov) |>
   select(-Tcrit.mn, -T95.mn)
 
-autoplot(ctol_nov)
+autoplot(ctol_nov_test)
 
 ```
 
+Age_class (number of successful estimates/total individual plants)
+
 November - Newly Burnt (8/8), Pioneer (7/8), Building (7/8) , Mature ((7/8)need to filter out plant_nr 3 before psiiht) works on individual level
 
-January - Newly burnt (0/8) works on no individuals, Pioneer (4/8) only works if filtering out everything but plant_nr 4, 6, 7, 8. Building (1/8) only works on plant 4, Mature (2/8) only works if filtering out plant_nr 4.
+January - Newly burnt (0/8) works on no individuals, Pioneer (3/8) only works if filtering for only plant_nr 6, 7, 8. Building (1/8) only works on plant 4, Mature (2/8) only works if filtering out plant_nr 4.
 
 After running on subsets of data, it seems like this is the only solution for running cold tolerance on individual plant level.
 
@@ -882,7 +878,7 @@ united_nov_mature <- cold_subset |>
 
 # January - Pioneer (4/8 estimates expected to work, if filtering for only nr 4, 6, 7, 8)
 united_jan_pioneer <- cold_subset |>
-  filter(month == "January", age_class == "Pioneer", plant_nr %in% c(4, 6, 7, 8)) |>
+  filter(month == "January", age_class == "Pioneer", plant_nr %in% c(6, 7, 8)) |>
   unite(col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
 
 # January - Building (1/8 estimates expected to work, if filtering for only nr 4)
@@ -897,21 +893,21 @@ united_jan_mature <- cold_subset |>
 
 
 # running model with 500 boots for each group
+# setting seed before each block so they can be reproducible if run independently
 
 set.seed(8)
-
 # November - Newly Burnt (8/8)
 ctol_nov_nb <- psiiht(temperature = united_nov_nb$temp_exp,
                       warming = FALSE,
                       fvfm = united_nov_nb$fv_fm_final,
                       control_temp = 5,
                       id = united_nov_nb$new_id,
-                      boots = 100)
-
+                      boots = 500)
 summary_nov_nb <- summary(ctol_nov_nb) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "November", age_class = "Newly Burnt")
 
+set.seed(8)
 # November - Pioneer (7/8)
 ctol_nov_pioneer <- psiiht(temperature = united_nov_pioneer$temp_exp,
                             warming = FALSE,
@@ -923,6 +919,7 @@ summary_nov_pioneer <- summary(ctol_nov_pioneer) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "November", age_class = "Pioneer")
 
+set.seed(8)
 # November - Building (7/8)
 ctol_nov_building <- psiiht(temperature = united_nov_building$temp_exp,
                              warming = FALSE,
@@ -934,6 +931,7 @@ summary_nov_building <- summary(ctol_nov_building) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "November", age_class = "Building")
 
+set.seed(8)
 # November - Mature (7/8)
 ctol_nov_mature <- psiiht(temperature = united_nov_mature$temp_exp,
                            warming = FALSE,
@@ -945,7 +943,11 @@ summary_nov_mature <- summary(ctol_nov_mature) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "November", age_class = "Mature")
 
-# January - Pioneer (4/8)
+
+# January - Newly Burnt (0/8) works on individual level, model breaks. 
+
+set.seed(8)
+# January - Pioneer (3/8) still unstable, try to rerun a few times if not working
 ctol_jan_pioneer <- psiiht(temperature = united_jan_pioneer$temp_exp,
                             warming = FALSE,
                             fvfm = united_jan_pioneer$fv_fm_final,
@@ -956,6 +958,7 @@ summary_jan_pioneer <- summary(ctol_jan_pioneer) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "January", age_class = "Pioneer")
 
+set.seed(8)
 # January - Building (1/8)
 ctol_jan_building <- psiiht(temperature = united_jan_building$temp_exp,
                              warming = FALSE,
@@ -967,6 +970,7 @@ summary_jan_building <- summary(ctol_jan_building) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "January", age_class = "Building")
 
+set.seed(8)
 # January - Mature (2/8)
 ctol_jan_mature <- psiiht(temperature = united_jan_mature$temp_exp,
                            warming = FALSE,
@@ -978,8 +982,9 @@ summary_jan_mature <- summary(ctol_jan_mature) |>
   select(-Tcrit.mn, -T95.mn) |>
   mutate(month = "January", age_class = "Mature")
 
-# Merge all summaries (excluding January Newly Burnt - 0/8)
-ctol_summary_cold <- bind_rows(
+
+# Merge all summaries (excluding January Newly Burnt - which worked for 0/8)
+ctol_psiiht_summary <- bind_rows(
   summary_nov_nb,
   summary_nov_pioneer,
   summary_nov_building,
@@ -988,11 +993,61 @@ ctol_summary_cold <- bind_rows(
   summary_jan_building,
   summary_jan_mature
 )
+# adding in NA for individuals that could not run
+# adding in remark column
 ```
 
-## **T50 DATA PROCESSING**
+#### T50 data export
 
-#### HOT
+```{r}
+#| label: T50 data export 
+#| message: false
+
+# Create rows for excluded individuals
+excluded_individuals <- tibble(
+  id = c(
+    # January - Newly Burnt (0/8, all excluded)
+    "January_Newly Burnt_1", "January_Newly Burnt_2", "January_Newly Burnt_3",
+    "January_Newly Burnt_4", "January_Newly Burnt_5", "January_Newly Burnt_6",
+    "January_Newly Burnt_7", "January_Newly Burnt_8",
+    # January - Pioneer (5/8 excluded)
+    "January_Pioneer_1", "January_Pioneer_2", "January_Pioneer_3", "January_Pioneer_4", "January_Pioneer_5",
+    # January - Building (7/8 excluded)
+    "January_Building_1", "January_Building_2", "January_Building_3",
+    "January_Building_5", "January_Building_6", "January_Building_7", "January_Building_8",
+    # January - Mature (plant 4 excluded, but only 2/8 converged so remaining 6 returned NA directly)
+    "January_Mature_4",
+    # November - Mature (plant 3 excluded)
+    "November_Mature_3"
+  ),
+  T50.mn = NA,
+  prop_success = NA,
+  remark = "; filtered out before psiiht run to not break function"
+)
+
+# merge with main summary and assign remarks
+ctol_all_summary_500_boots <- bind_rows(
+  ctol_psiiht_summary |> mutate(remark = NA_character_),  # initialise remark column
+  excluded_individuals
+) |>
+  arrange(id) |>
+  mutate(remark = case_when(
+    is.nan(prop_success) ~ "psiiht convergence failure",
+    is.na(T50.mn) & is.na(prop_success) ~ "filtered out before psiiht run to not break function",
+    .default = remark
+  ))|>
+  select(-month, -age_class)
+
+# export the cold T50 data to raw_data folder
+write.csv(ctol_all_summary_500_boots,
+  here("raw_data", "T50_cold_500_boots.csv"),
+  row.names = FALSE
+)
+```
+
+## **T50 DATA ANALYSIS** 
+
+### HOT
 
 ```{r}
 #| label: T50 data import
@@ -1015,6 +1070,19 @@ colSums(is.na(T50_hot))      # see if a lot of NA, there are two NAs
 # RICHARD SAID TO ONLY REMOVE IMPOSSIBLE VALUES, SOME VARIATION IS ALWAYS EXPECTED 
 # RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL
 # JUST MOVE ON TO LINEAR MODELS
+
+# visualising prop_succsess vs etimated T50
+T50_hot |>
+  filter(!is.na(T50.mn)) |>
+  ggplot(aes(x = prop_success, y = T50.mn)) +
+  geom_point() +
+  labs(title = "T50 vs bootstrap success rate")
+
+# testing for T50 outliers using z scores, none detected
+T50_hot |>
+  filter(!is.na(T50)) |>
+  mutate(z_score = scale(T50)) |>
+  filter(abs(z_score) > 3)
 ```
 
 All T50 estimates are in the rage between 49.55 C - 55.27 C, this is reasonable. Two individuals returns NA, this is where the model could not fit T50 estimates.
@@ -1033,7 +1101,7 @@ T50_hot <- T50_hot |>
     remove = FALSE   # keeps the original id column
   ) |> 
   mutate(plant_nr = as.numeric(plant_nr)) |> # plant number as numeric
-  rename(T50 = T50.mn) |>  # rename T50 column
+  rename(T50 = T50.mn)|> # rename T50 column
   na.omit() # remove rows with NA
 
 ```
@@ -1069,15 +1137,13 @@ ggplot(T50_hot_grouped, aes(x = month, y = mean_T50, color = age_class, group = 
 
 ```
 
-### **STATISTICS - LINEAR MODEL SEPERATELY ON HOT AND COLD T50s**
+#### Statistics - Hot T50 linear model
 
 Using linear models. T50_hot and T50_cold as response variable for each.
 
 Fixed effects: month and age_class. Random effect: none as each plant is reduced to one T50-value now, the random effect is not needed.
 
 Using a two-way ANOVA
-
-#### Hot T50 linear model
 
 Using a model with interaction to take hypothesis 3 into account. No interaction found, comparing interaction model with no-interaction model.
 
@@ -1147,28 +1213,138 @@ Results from performance model check is OK for model WITHOUT interaction. I woul
 
 ```
 
-#### COLD
+### COLD
+
+```{r}
+#| label: T50 cold data import
+#| message: false
+# importing full dataframe for cold results run with 500 boots
+
+T50_cold <- read.csv(here("raw_data", "T50_cold_500_boots.csv"))
+
+```
+
+```{r}
+#| label: T50 hot data checking 
+#| message: false
+
+summary(T50_cold)              # global check of all individuals, see if any are very high or low
+
+# big variation in estimated ctol, from -41.23 to -13.84 C. 
+# some individuals have very low prop_success, mening model failed to converge, giving less reliable estimates
+
+# visualising prop_succsess vs etimated T50 
+T50_cold |>
+  filter(!is.na(T50.mn)) |>
+  ggplot(aes(x = prop_success, y = T50.mn)) +
+  geom_point() +
+  geom_hline(yintercept = -35, linetype = "dashed", colour = "red") +  # adjust threshold
+  labs(title = "T50 vs bootstrap success rate")
+
+# testing for T50 outliers using z-scores. one detected, november building 6. 
+T50_cold |>
+  filter(!is.na(T50.mn)) |>
+  mutate(z_score = scale(T50.mn)) |>
+  filter(abs(z_score) > 3) 
+```
+
+Some individuals have very low estimated T50 (\<-35 C) and also low prop_success. Would be inclined to filter out, as these results are unreliable. Colud affect linear model results substantially.
+
+Z-score over 3 SD for November_Building_6 (T50 = 41C). Would also consider filtering out January_Mature_8 as tolerance deviates almost just as much with T50 = 39 C.
+
+No individuals have high prop_success though so would have very few individuals left if being strict on this.
+
+Need to come back and ask if this is justified.
+
+#### Preparing cold T50 data for analysis and outlier handling
+
+```{r}
+#| label: preparing T50 cold data
+#| message: false
+#adding columns for month, age class, id for analysis
+
+T50_cold <- T50_cold |>
+  separate(
+    id,
+    into = c("month", "age_class", "plant_nr"),
+    sep = "_",
+    remove = FALSE
+  ) |>
+  mutate(plant_nr = as.numeric(plant_nr)) |>
+  rename(T50 = T50.mn) |>
+  # add remarks before filtering
+  mutate(remark = case_when(
+    T50 < -35 ~ "; outlier low prop_succes and very low T50 predicted",
+    .default = remark
+  )) |>
+  # now filter out
+  filter(T50 >= -35) |> # filter out as low prop_success, and very low t50
+  filter(!is.na(T50))  # only remove rows where T50 itself is NA
+  
+```
+
+#### Cold group level visualization plot
+
+```{r}
+#| label: group level visualisation 
+#| message: false
+
+# grouping T50 by month x age_class
+T50_cold_grouped <- T50_cold |> 
+  group_by(month, age_class) |> 
+  mutate(month = factor(month, levels = c("November", "January"))) |> 
+  mutate(age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer", 
+                                  "Building", "Mature"))) |> 
+    summarise(
+    n = n(), # see how many individuals are used in calculating mean T50
+    mean_T50 = mean(T50),
+    SD = sd(T50),
+    SE = SD / sqrt(n),
+    .groups = "drop"
+  )
+# n = 8 only for one group. November plants have n in rage from 6-8. January n between 0 and 3.  
+
+# visualisation plot to see how T50 varies with month and age class and possible interactions
+
+ggplot(T50_cold_grouped, aes(x = month, y = mean_T50, color = age_class, group = age_class)) +
+  geom_point() +
+  geom_line() +
+  geom_errorbar(aes(ymin = mean_T50 - SE, ymax = mean_T50 + SE), width = 0.2) +
+  theme_bw()
+```
+
+#### Statistics - Hot T50 linear model
+
+Not sure how to prceed as there are very few estimates for January T50s. Only 5 individuals accross all of January got a T50. Only January_Pioneer got more than one individual T50, so only one with SD and SE estimation possible.
+
+Any statistical comparison between months would be very fragile.
+
+Any point of fitting a model across months here with these uncertainties? Alternatively just report January result in table and try to run a model for November alone? Would then not be able to test H1 at all, and only partially test H3.
 
 ```{r}
 #| label: cold linear mixed effect model 
 #| message: false
 
-# hot linear mixed effect model
-# no, use lm here just as for hot! 
-lmer(T50_cold) ~ month * age_class* + (1|plant_nr)
+# if runn on all available cold T50 data, with interaction
+cold_model <- lm(T50 ~ month * age_class, data = T50_cold)
+anova(cold_model)
+summary(cold_model)
+# not a good model, too much uncertainty in Jnauary. Newly Burnt T50 missing entirely. 
 
+
+# could run model on ONLY November T50s, then not testing H1 at all, and H3 only partially
+T50_cold_nov <- T50_cold |>
+  filter(month == "November")
+
+# linear model for cold T50 with age class as fixed effect
+cold_model_nov <- lm(T50 ~ age_class, data = T50_cold_nov)
+anova(cold_model_nov)
+summary(cold_model_nov)
+
+
+# age class does not significantly affect cold tolerance in November (p = 0.29, adjusted R = 0.03).
 ```
 
-anova?
+Still useful to connect to traits? If so only for November?
 
-residuals
-
-post hoc
-
-Make one big T50 table for thesis?
-
-table w p-values sgnificance etc.
-
-figures?
-
-how to connect to traits? still time?
+#### Export model result in a table?

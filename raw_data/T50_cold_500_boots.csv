@@ -1,0 +1,65 @@
+"id","prop_success","T50.mn","remark"
+"January_Building_1",NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_2",NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_3",NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_4",0.612,-20.2281699250508,NA
+"January_Building_5",NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_6",NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_7",NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_8",NA,NA,"filtered out before psiiht run to not break function"
+"January_Mature_1",0.244,-32.3199907603851,NA
+"January_Mature_2",NA,NA,"psiiht convergence failure"
+"January_Mature_3",NA,NA,"psiiht convergence failure"
+"January_Mature_4",NA,NA,"filtered out before psiiht run to not break function"
+"January_Mature_5",NA,NA,"psiiht convergence failure"
+"January_Mature_6",NA,NA,"psiiht convergence failure"
+"January_Mature_7",NA,NA,"psiiht convergence failure"
+"January_Mature_8",0.34,-39.6786481067214,NA
+"January_Newly Burnt_1",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_2",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_3",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_4",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_5",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_6",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_7",NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_8",NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_1",NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_2",NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_3",NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_4",NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_5",NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_6",0.674,-28.0680978879252,NA
+"January_Pioneer_7",0.558,-26.9209221085334,NA
+"January_Pioneer_8",0.23,-20.4888166224192,NA
+"November_Building_1",0.66,-21.0672435669743,NA
+"November_Building_2",0.472,-16.8150224090052,NA
+"November_Building_3",NA,NA,"psiiht convergence failure"
+"November_Building_4",0.252,-19.7885973554765,NA
+"November_Building_5",0.626,-17.5830943204225,NA
+"November_Building_6",0.336,-41.2325859954383,NA
+"November_Building_7",0.608,-24.6375768541816,NA
+"November_Building_8",0.644,-18.9826945504924,NA
+"November_Mature_1",0.662,-19.6989502692646,NA
+"November_Mature_2",0.338,-29.7175752050769,NA
+"November_Mature_3",NA,NA,"filtered out before psiiht run to not break function"
+"November_Mature_4",0.364,-17.2039803467735,NA
+"November_Mature_5",0.522,-24.1068829106402,NA
+"November_Mature_6",0.63,-16.0205299717354,NA
+"November_Mature_7",0.65,-21.9089463984139,NA
+"November_Mature_8",0.41,-27.3543962944494,NA
+"November_Newly Burnt_1",0.662,-18.4235067652751,NA
+"November_Newly Burnt_2",0.388,-13.8434747409577,NA
+"November_Newly Burnt_3",0.534,-18.9368348523111,NA
+"November_Newly Burnt_4",0.53,-17.1882235357719,NA
+"November_Newly Burnt_5",0.628,-17.4688004341303,NA
+"November_Newly Burnt_6",0.438,-21.9066448347252,NA
+"November_Newly Burnt_7",0.634,-23.8843101761498,NA
+"November_Newly Burnt_8",0.69,-16.5800703377417,NA
+"November_Pioneer_1",0.578,-16.1598432485694,NA
+"November_Pioneer_2",0.37,-23.8064357565469,NA
+"November_Pioneer_3",NA,NA,"psiiht convergence failure"
+"November_Pioneer_4",0.11,-24.0192784287615,NA
+"November_Pioneer_5",0.458,-20.533301440768,NA
+"November_Pioneer_6",0.63,-14.6165251268161,NA
+"November_Pioneer_7",0.404,-18.4038944491168,NA
+"November_Pioneer_8",0.644,-18.8114644659716,NA
