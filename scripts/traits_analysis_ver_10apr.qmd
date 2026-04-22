@@ -34,7 +34,10 @@ trait_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Toleranc
 T50_hot_data <- read.csv(here("raw_data", "T50_hot_500_boots.csv")) |> 
    rename(T50 = T50.mn)  # rename T50 column
 
-# should this have more info included when saved earlier?
+
+# implort hot T50 data
+T50_cold_data <- read.csv(here("raw_data", "T50_cold_500_boots.csv")) |> 
+   rename(T50 = T50.mn)  # rename T50 column
 
 ```
 
@@ -224,7 +227,7 @@ trait_cor_by_month #  all within +/- 0.7 so no problematic correlations for lm m
 #| message: false
 
 # joining tarit means data frame with T50 hot dataframe by id column
-trait_T50_hot <- trait_summary |>
+trait_T50_hot <- trait_data_means |>
   dplyr::left_join(T50_hot_data, by = "id") |> 
    mutate(month = factor(month, levels = c("November", "January"))) |> 
   na.omit() # remove rows with NA
@@ -237,6 +240,7 @@ trait_T50_hot <- trait_summary |>
 #| label: exploratory plots    
 #| message: false
 
+# tried without facteting by month. already know month has an impact, so could mask trait trends 
 # faceting by month, as that cold mask trends 
 
 # mean thickness vs T50 hot
@@ -280,7 +284,7 @@ ldmc_vs_T50_hot
 
 ```
 
-## Linear model for traits vs T50
+## Linear model for traits vs T50 hot
 
 Checking if traits correlate with T50 **independent** of time and age class.
 
@@ -374,17 +378,120 @@ NEED TO DECIDE IF I WANT TO ADD INTERACTION INTO MODEL. Come back to this.
 
 ```
 
-## Clean final visualisation plot
+## Clean final visualization plot
 
 ```{r}
 
 # plot for each trait x t50 hot. facet by month and trait, giving 6 panels. 
 ```
 
-No need to log transform according to Richard.
-
 HUSK: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av måned og aldersklasse! Så må basere modellen på det.
 
 ## COLD
 
-Same workflow for cold T50 data once I have it.
+No/very unstable data for January individuals! possible to do linear model triats analysis still? if so, only on November
+
+## Joining T50 cold data to trait data
+
+```{r}
+#| label: joining data frames   
+#| message: false
+
+# joining tarit means data frame with T50 hot dataframe by id column
+trait_T50_cold <- trait_data_means |>
+  dplyr::left_join(T50_cold_data, by = "id") |> 
+   mutate(month = factor(month, levels = c("November", "January"))) |> 
+   # now filter out extremely low, low_prop T50 estimates
+   filter(T50 >= -35) |> 
+   filter(!is.na(T50))  # only remove rows where T50 itself is NA
+
+```
+
+## Exploratory plots: T50 cold against each trait
+
+```{r}
+#| label: exploratory plots    
+#| message: false
+
+# faceting by month, as data availability 
+
+# mean thickness vs T50 cold
+thickness_vs_T50_cold <- ggplot(trait_T50_cold, aes(x = leaf_thickness_mean, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "Leaf thickness", y = "T50") +
+  theme_minimal()
+
+thickness_vs_T50_cold 
+# when not faceted by month: thicker leaves less tolerant to cold. 
+# when faceted by month: November, slight increase in thickness correlated to less cold tolerant. January, clearer similar trend NB: very few data points. 
+
+# mean sla vs T50 cold
+sla_vs_T50_cold <- ggplot(trait_T50_cold, aes(x = sla, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "SLA", y = "T50") +
+  theme_minimal()
+
+sla_vs_T50_cold 
+# when NOT faceted by month: higher SLA (more aqusitive) have less cold tolerant leaves. as expected
+# when faceted by month: November higher SLA (more aqusitive) have less cold tolerant leaves. as expected. January, opposite pattern, high SLA (aquisitive) correlates to better cold tolerance - NB few data points 
+
+# mean ldmc vs T50 cold
+ldmc_vs_T50_cold <- ggplot(trait_T50_cold, aes(x = ldmc, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "LDMC", y = "T50") +
+  theme_minimal()
+
+ldmc_vs_T50_cold
+# when NOT faceted by month: high LDMC correlates to slightly less cold tolerant leaves. not expected
+# when faceted by month: November high LDMC are more cold tolerant. Janyary almost flat relationship - NB few data points. 
+
+```
+
+## Linear model for traits vs T50 cold
+
+```{r}
+#| label: linear model cold all
+#| message: false
+
+# linear model for T50 response to triats, no interactions included
+lm_traits_T50_cold <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class, data = trait_T50_cold) 
+
+anova(lm_traits_T50_cold) #look at and report results
+summary(lm_traits_T50_cold) # look at and report results
+
+# summed up: 
+# model significant
+#leaf thickness significant prdictor of T50. month effect likely underrepresented as very few January individuals are included. 
+```
+
+```{r}
+#| label: linear model cold nov
+#| message: false
+lm_traits_T50_cold_nov <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + age_class,
+                            data = trait_T50_cold |> filter(month == "November"))
+anova(lm_traits_T50_cold_nov)
+summary(lm_traits_T50_cold_nov)
+
+# summed up: 
+# model lost significance whe january removed 
+# leaf thickness not significant anymore
+# probably bc of unbalanced data. 
+```
+
+## Checking model performance
+
+```{r}
+#| label: checking model preformance 
+#| message: false
+
+library(performance)
+check_model(lm_traits_T50_cold)  # linearity, homogenity not very good
+
+check_model(lm_traits_T50_cold_nov)  # a bit better 
+```
