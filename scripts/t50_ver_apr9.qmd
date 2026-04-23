@@ -16,7 +16,7 @@ library(here)
 library(thermalTolerance) 
 
 # remember to re-install if Richard changes package, found on github, installed using: 
-#remotes::install_github("richardjtelford/thermalTolerance") 
+# DO NOT install the most recent version. remotes::install_github("richardjtelford/thermalTolerance") 
 # this package estimates of 3 different PSII heat tolerance metrics, Tcrit, T50 and T95. Can take each individual nr plant into account, fits curves by randomly resampling for each individual by bootstrapping.
 ```
 
@@ -91,7 +91,7 @@ ggplot(hot_subset, aes(x = as.numeric(as.character(temp_exp)), y = fv_fm_final,
 # add labels  
   labs( 
     title = "Fv/Fm response across heat treatments from 20 C to 56 C",
-    subtitle = "Each colour and line represent one individual plant. All hot data. ", 
+    subtitle = "Each colour and line represent one individual plant. ", 
     x = "Treatment temperature (C)",
     y = "Fv/Fm",
     colour = "Plant nr"
@@ -732,7 +732,7 @@ ggplot(cold_subset, aes(x = as.numeric(as.character(temp_exp)), y = fv_fm_final,
 # add labels  
   labs( 
     title = "Fv/Fm response across freezing treatments from 5 C to -20 C",
-    subtitle = "Each colour and line represent one individual plant. All cold data. ", 
+    subtitle = "Each colour and line represent one individual plant.", 
     x = "Treatment temperature (C)",
     y = "Fv/Fm",
     colour = "Plant nr"
@@ -1045,7 +1045,7 @@ write.csv(ctol_all_summary_500_boots,
 )
 ```
 
-## **T50 DATA ANALYSIS** 
+## **T50 DATA ANALYSIS**
 
 ### HOT
 
@@ -1348,3 +1348,173 @@ summary(cold_model_nov)
 Still useful to connect to traits? If so only for November?
 
 #### Export model result in a table?
+
+------------
+
+#### Plot response curves and T50 for EGU and thesis
+
+```{r}
+#| label: hot preparing curves and T50 mean
+#| message: false
+
+# currently for the test chunk htol 20 all
+
+# EXTRACT PREDICTED CURVES FROM RESULTS OBJECT 
+# each individual in htol_20_all$results has a $preds dataframe with
+# columns: temperature, preds (fitted curve), low, high (bootstrap CI band)
+
+pred_curves <- purrr::map_dfr(names(htol_20_all$results), function(id) {
+  preds <- htol_20_all$results[[id]]$preds
+  if (is.null(preds)) return(NULL)
+  preds |>
+    mutate(id = id)
+}) |>
+  # Split id back into month, age_class, plant_nr
+  separate(id, into = c("month", "age_class", "plant_nr"), sep = "_")
+
+
+# AVERAGE CURVES TO GROUP LEVEL FOR PLOTTING 
+
+group_curves <- pred_curves |>
+  mutate(
+    month     = factor(month, levels = c("November", "January")),
+    age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer",
+                                              "Building",   "Mature"))
+  ) |>
+  group_by(month, age_class, temperature) |>
+  summarise(
+    mean_pred = mean(preds, na.rm = TRUE),
+    .groups   = "drop"
+  )
+
+# PREPARE GROUP-LEVEL T50 WITH CI 
+
+t50_points <- purrr::map_dfr(names(htol_20_all$results), function(id) {
+  t50_boots <- htol_20_all$results[[id]]$T50
+  if (is.null(t50_boots)) return(NULL)
+  data.frame(
+    id       = id,
+    T50.mn   = mean(t50_boots,                      na.rm = TRUE),
+    T50.low  = quantile(t50_boots, 0.025,            na.rm = TRUE),
+    T50.hi   = quantile(t50_boots, 0.975,            na.rm = TRUE)
+  )
+}) |>
+  separate(id, into = c("month", "age_class", "plant_nr"), sep = "_") |>
+  mutate(
+    month     = factor(month,     levels = c("November", "January")),
+    age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer",
+                                              "Building",   "Mature"))
+  ) |>
+  # Summarise to group level
+  group_by(month, age_class) |>
+  summarise(
+    mean_T50 = mean(T50.mn,  na.rm = TRUE),
+    low_T50  = mean(T50.low, na.rm = TRUE),
+    hi_T50   = mean(T50.hi,  na.rm = TRUE),
+    .groups  = "drop"
+  ) |>
+  # Find Fv/Fm value on the curve at the T50 temperature
+  left_join(group_curves, by = c("month", "age_class")) |>
+  group_by(month, age_class, mean_T50, low_T50, hi_T50) |>
+  slice_min(abs(temperature - mean_T50)) |>
+  ungroup()
+
+
+
+```
+
+```{r}
+#| label: hot plot curve t50 faceted by age class
+#| message: false
+# PLOT
+
+ggplot(group_curves, aes(x = temperature, y = mean_pred,
+                          linetype = month, colour = month)) +
+
+  geom_line(linewidth = 0.9) +
+
+  # solid November, dashed January
+  scale_linetype_manual(values = c("November" = "solid",
+                                   "January"  = "solid")) +
+  scale_colour_manual(values = c("November" = "#7B2D8B",   # dark purple
+                                "January"  = "#C589D8")) + # light purple
+
+  
+    # Horizontal error bar showing 95% CI along x-axis
+  geom_errorbarh(data = t50_points,
+                 aes(y      = mean_pred,
+                     xmin   = low_T50,
+                     xmax   = hi_T50,
+                     colour = month),
+                 height = 0.02, linewidth = 0.6,
+                 show.legend = FALSE) +
+
+  # T50 point — now mapped to shape so it appears in legend
+  geom_point(data = t50_points,
+             aes(x = mean_T50, y = mean_pred,
+                 colour = month, shape = "T50"),
+             size = 3.5, show.legend = TRUE) +
+  
+
+  # Dotted vertical drop line to x-axis
+  geom_segment(data = t50_points,
+               aes(x      = mean_T50, xend = mean_T50,
+                   y      = 0,        yend = mean_pred,
+                   colour = month),
+               linetype = "dotted", linewidth = 0.4,
+               show.legend = FALSE) +
+  
+  # label on T50 pionts
+  geom_text(data = t50_points,
+            aes(x      = mean_T50,
+                y      = mean_pred,
+             label = paste0(ifelse(month == "November", "Nov", "Jan"),
+               ", ", round(mean_T50, 1), "C"),
+                colour = month),
+            vjust       = ifelse(t50_points$month == "November", 2, -2),
+            hjust       = ifelse(t50_points$month == "November", 1.2, 0.1),
+            size        = 2.5,
+            fontface    = "bold",
+            show.legend = FALSE) +
+
+  # 2x2 facet grid in correct positions:
+  # top-left = Newly Burnt, top-right = Pioneer
+  # bottom-left = Building, bottom-right = Mature
+  facet_wrap(~ age_class,
+             ncol = 2,
+             nrow = 2) +
+
+  labs(
+    x        = "Temperature (C)",
+    y        = "Fv/Fm",
+    linetype = NULL,
+    colour   = NULL,
+    shape    = NULL
+  ) +
+
+  scale_y_continuous(limits = c(0, 0.9)) +
+  
+   # Tidy up the legend so lines and point appear cleanly
+  guides(
+    colour   = guide_legend(override.aes = list(shape = NA)),
+    shape    = guide_legend(override.aes = list(colour = "grey30",
+                                                linetype = "blank"))
+  ) +
+  
+  theme_bw() +
+  theme(
+    strip.background = element_rect(fill = "grey90"),
+    strip.text       = element_text(face = "bold"),
+    legend.position  = "bottom",
+    panel.grid.minor = element_blank()
+  )
+
+
+# save fig to output folder 
+ggsave(
+  here("output", "T50_hot_group_curves_age_class.png"),
+  width  = 10,
+  height = 6,
+  dpi    = 300
+)
+```
