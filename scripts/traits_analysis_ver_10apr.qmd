@@ -298,8 +298,7 @@ lm_traits_T50_hot <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + month + age_cla
 anova(lm_traits_T50_hot) #look at and report results
 summary(lm_traits_T50_hot) # look at and report results
 
-# summed up: no significant effects of any of these traits, again no effect of age class.
-# as for original T50 model: month significant predictor!
+# summed up: thickness, ldmc, month significant predictors
 ```
 
 ## Checking model performance
@@ -368,9 +367,13 @@ check_model(lm_ldmc_int) # high collinearity, may inflate uncertanty.
 #preformance better if model without interaction
 
 AIC(lm_traits_T50_hot, lm_ldmc_int) # slightly better for the interaction included
-```
 
-NEED TO DECIDE IF I WANT TO ADD INTERACTION INTO MODEL. Come back to this.
+# month * ldmc model might be a good choice, richard agrees. better 197AIC compared to 200 for no interaction model. 
+
+# colud potentially leaf thickness out entirely, if i dont trust the data. 
+
+# do not test interactions between traits, only limits degree of freedom
+```
 
 ## Export model output
 
@@ -382,14 +385,12 @@ NEED TO DECIDE IF I WANT TO ADD INTERACTION INTO MODEL. Come back to this.
 
 ```{r}
 
-# plot for each trait x t50 hot. facet by month and trait, giving 6 panels. 
+# plot for each trait x t50 hot. from modeled data. facet by month and trait, giving. 
 ```
 
 HUSK: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av måned og aldersklasse! Så må basere modellen på det.
 
 ## COLD
-
-No/very unstable data for January individuals! possible to do linear model triats analysis still? if so, only on November
 
 ## Joining T50 cold data to trait data
 
@@ -455,33 +456,22 @@ ldmc_vs_T50_cold
 
 ## Linear model for traits vs T50 cold
 
-```{r}
-#| label: linear model cold all
-#| message: false
+UPDATE 24/4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold.
 
-# linear model for T50 response to triats, no interactions included
-lm_traits_T50_cold <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class, data = trait_T50_cold) 
-
-anova(lm_traits_T50_cold) #look at and report results
-summary(lm_traits_T50_cold) # look at and report results
-
-# summed up: 
-# model significant
-#leaf thickness significant prdictor of T50. month effect likely underrepresented as very few January individuals are included. 
-```
+R-club 24/4: Because of the very low number of predicted T50 values for January, only do the hypothesis testing on cold T50 vs traits for the November data. Take the month term out of the model. not necessary to add interactions.
 
 ```{r}
 #| label: linear model cold nov
 #| message: false
-lm_traits_T50_cold_nov <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + age_class,
-                            data = trait_T50_cold |> filter(month == "November"))
-anova(lm_traits_T50_cold_nov)
-summary(lm_traits_T50_cold_nov)
 
-# summed up: 
-# model lost significance whe january removed 
-# leaf thickness not significant anymore
-# probably bc of unbalanced data. 
+# filter for november T50 data
+trait_T50_cold_nov <- trait_T50_cold |> filter(month == "November")
+
+# linear model for T50 nov response to triats, no interactions included
+lm_traits_T50_cold_nov <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + age_class, data = trait_T50_cold_nov) 
+
+anova(lm_traits_T50_cold_nov) #look at and report results
+summary(lm_traits_T50_cold_nov) # look at and report results
 ```
 
 ## Checking model performance
@@ -491,35 +481,9 @@ summary(lm_traits_T50_cold_nov)
 #| message: false
 
 library(performance)
-check_model(lm_traits_T50_cold)  # linearity, homogenity not very good
-
 check_model(lm_traits_T50_cold_nov)  # a bit better 
 ```
 
-Already low n = 28 and 5/6 predictors, so maybe not wise to add interactions.
-
 ```{r}
-#| label: comparing models
-#| message: false
-
-# month x ldmc (mirrors hot model)
-lm_cold_ldmc_int <- lm(T50 ~ ldmc * month + sla + leaf_thickness_mean + age_class,
-                        data = trait_T50_cold)
-
-# month x leaf thickness (biologically motivated given leaf thickness was borderline)
-lm_cold_lt_int <- lm(T50 ~ leaf_thickness_mean * month + sla + ldmc + age_class,
-                      data = trait_T50_cold)
-
-# month x sla
-lm_cold_sla_int <- lm(T50 ~ sla * month + leaf_thickness_mean + ldmc + age_class,
-                       data = trait_T50_cold)
-
-# compare all
-AIC(lm_traits_T50_cold,
-    lm_cold_ldmc_int,
-    lm_cold_lt_int,
-    lm_cold_sla_int)
-
-# none of these options are better
-
+#plot of modeled data
 ```
