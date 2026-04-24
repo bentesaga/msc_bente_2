@@ -1310,6 +1310,8 @@ ggplot(T50_cold_grouped, aes(x = month, y = mean_T50, color = age_class, group =
   geom_line() +
   geom_errorbar(aes(ymin = mean_T50 - SE, ymax = mean_T50 + SE), width = 0.2) +
   theme_bw()
+
+
 ```
 
 #### Statistics - Hot T50 linear model
@@ -1320,31 +1322,22 @@ Any statistical comparison between months would be very fragile.
 
 Any point of fitting a model across months here with these uncertainties? Alternatively just report January result in table and try to run a model for November alone? Would then not be able to test H1 at all, and only partially test H3.
 
+UPDATE 24.4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold.
+
 ```{r}
 #| label: cold linear mixed effect model 
 #| message: false
 
-# if runn on all available cold T50 data, with interaction
-cold_model <- lm(T50 ~ month * age_class, data = T50_cold)
-anova(cold_model)
-summary(cold_model)
-# not a good model, too much uncertainty in Jnauary. Newly Burnt T50 missing entirely. 
+# filter for November T50 data
+T50_cold_nov <- T50_cold |> filter(month == "November")
+# run model without January, only age class as predictor
 
+cold_model <- lm(T50 ~ age_class, data = T50_cold_nov)
+anova(cold_model) # can use anova or car::Anova, both works here  
+summary(cold_model) # significance of cintercept in summary rarely interesting
 
-# could run model on ONLY November T50s, then not testing H1 at all, and H3 only partially
-T50_cold_nov <- T50_cold |>
-  filter(month == "November")
-
-# linear model for cold T50 with age class as fixed effect
-cold_model_nov <- lm(T50 ~ age_class, data = T50_cold_nov)
-anova(cold_model_nov)
-summary(cold_model_nov)
-
-
-# age class does not significantly affect cold tolerance in November (p = 0.29, adjusted R = 0.03).
+# in summary estimates are important, trust the anova for significance 
 ```
-
-Still useful to connect to traits? If so only for November?
 
 #### Export model result in a table?
 
@@ -1736,7 +1729,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
                                linetype = month, colour = month)) +
   
        # Raw data points — small and transparent
-  geom_point(data = hot_subset |>
+  geom_point(data = cold_subset |>
                mutate(month     = factor(month, levels = c("November", "January")),
                       age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer",
                                                                 "Building", "Mature"))),
@@ -1825,9 +1818,9 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   )
 
 ggsave(
-  here("output", "T50_cold_group_curves_age_class_.png"),
-  width = 10,
-  height = 8,
+  here("output", "T50_cold_group_curves_age_class_w_raw.png"),
+  width = 8,
+  height = 6,
   dpi = 300
 )
 ```
