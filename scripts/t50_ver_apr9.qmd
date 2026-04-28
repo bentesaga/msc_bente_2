@@ -1079,8 +1079,8 @@ T50_hot |>
 
 # testing for T50 outliers using z scores, none detected
 T50_hot |>
-  filter(!is.na(T50)) |>
-  mutate(z_score = scale(T50)) |>
+  filter(!is.na(T50.mn)) |>
+  mutate(z_score = scale(T50.mn)) |>
   filter(abs(z_score) > 3)
 ```
 
@@ -1100,6 +1100,11 @@ T50_hot <- T50_hot |>
     remove = FALSE   # keeps the original id column
   ) |> 
   mutate(plant_nr = as.numeric(plant_nr)) |> # plant number as numeric
+  mutate( # update levels 
+    month = factor(month, levels = c("November", "January")),
+    age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer", 
+                                              "Building", "Mature"))
+  ) |> 
   rename(T50 = T50.mn)|> # rename T50 column
   na.omit() # remove rows with NA
 
@@ -1158,30 +1163,29 @@ hot_model_interaction <- lm(T50 ~ month * age_class, data = T50_hot) # interacti
 anova(hot_model_interaction) #look at and report results
 summary(hot_model_interaction) # look at and report results
 
-
+# anova: 
 # month highly significant (p < 0.001). Hypothesis 1 supported. 
 # age class is not significant (p = 0.18) 
-# month:age_class interaction is non-significant (p = 0.68). Hypothesis 3 not supported. 
+# month:age_class interaction is non-significant (p = 0.68). Hypothesis 3 not supported for hot. 
+# summary: T50 = 51.3 C at refrence level, jan nb
 
+#EXPLORATORY: 
 # since interaction is not significant, trying model without to see if it is better
 hot_model <- lm(T50 ~ month + age_class, data = T50_hot) # no interaction
 
 anova(hot_model) #look at and report results
 summary(hot_model) # look at and report results
 
-# summed up: heat tolerance appox 2 C higher in January than in November. 
-# month have a significant effect on T50 hot***
-# age class have NO significant effect on T50 hot
-
 #comparing model fits 
 anova(hot_model, hot_model_interaction)
-# model not significantly removed by adding interaction
+# model not significantly improved by adding interaction
 
 AIC(hot_model, hot_model_interaction) 
-# AIC 195 for nointeraction, 199 for interaction
+# AIC 195 for nointeraction, 199 for interaction, relavant?
+# need the interaction to thest H3 though, so will keep. 
 ```
 
-By both models: Hypothesis 1 is supported, month have significant effect on T50. No significant effect of age class on T50.
+By both models: Hypothesis 1 is supported, month have significant effect on T50. No significant effect of age class on T50. H3 not supported.
 
 Model with interaction: No interaction between month and age_class, hypothesis 3 NOT supported.
 
@@ -1247,7 +1251,7 @@ T50_cold |>
   filter(abs(z_score) > 3) 
 ```
 
-Some individuals have very low estimated T50 (\<-35 C) and also low prop_success. Would be inclined to filter out, as these results are unreliable. Colud affect linear model results substantially.
+Some individuals have very low estimated T50 (\<-35 C) and also low prop_success. Would be inclined to filter out, as these results are unreliable. Could affect linear model results substantially.
 
 Z-score over 3 SD for November_Building_6 (T50 = 41C). Would also consider filtering out January_Mature_8 as tolerance deviates almost just as much with T50 = 39 C.
 
@@ -1271,6 +1275,8 @@ T50_cold <- T50_cold |>
   ) |>
   mutate(plant_nr = as.numeric(plant_nr)) |>
   rename(T50 = T50.mn) |>
+   mutate(age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer", 
+                                  "Building", "Mature"))) |> 
   # add remarks before filtering
   mutate(remark = case_when(
     T50 < -35 ~ "; outlier low prop_succes and very low T50 predicted",
@@ -1314,9 +1320,9 @@ ggplot(T50_cold_grouped, aes(x = month, y = mean_T50, color = age_class, group =
 
 ```
 
-#### Statistics - Hot T50 linear model
+#### Statistics - Cold T50 linear model
 
-Not sure how to prceed as there are very few estimates for January T50s. Only 5 individuals accross all of January got a T50. Only January_Pioneer got more than one individual T50, so only one with SD and SE estimation possible.
+Not sure how to proceed as there are very few estimates for January T50s. Only 6 individuals accross all of January got a T50. Only January_Pioneer got more than one individual T50, so only one with SD and SE estimation possible.
 
 Any statistical comparison between months would be very fragile.
 
@@ -1325,7 +1331,7 @@ Any point of fitting a model across months here with these uncertainties? Altern
 UPDATE 24.4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold.
 
 ```{r}
-#| label: cold linear mixed effect model 
+#| label: cold linear model nov
 #| message: false
 
 # filter for November T50 data
@@ -1339,9 +1345,21 @@ summary(cold_model) # significance of cintercept in summary rarely interesting
 # in summary estimates are important, trust the anova for significance 
 ```
 
+#### Cold model performance 
+
+```{r}
+#| label: checking model preformance 
+#| message: false
+
+library(performance)
+check_model(cold_model)  
+
+#influential observations a bit weird
+```
+
 #### Export model result in a table?
 
-------------
+------------------------------------------------------------------------
 
 #### Plot response curves and T50 for EGU and thesis
 
@@ -1626,6 +1644,8 @@ ggsave(
 
 #### COLD
 
+As January estimates for freezing T50 are very few, do not plot the graphs for J an freezing. Only plott the reliable results, so from November
+
 ```{r}
 #| label: cold preparing curves and T50 mean
 #| message: false
@@ -1643,22 +1663,19 @@ extract_curves <- function(model_obj, month_name, age_class_name) {
            age_class = age_class_name)
 }
 
-# Extract from each model object
+# Extract from each model object - november only 
 cold_pred_curves <- bind_rows(
   extract_curves(ctol_nov_nb,       "November", "Newly Burnt"),
   extract_curves(ctol_nov_pioneer,  "November", "Pioneer"),
   extract_curves(ctol_nov_building, "November", "Building"),
-  extract_curves(ctol_nov_mature,   "November", "Mature"),
-  extract_curves(ctol_jan_pioneer,  "January",  "Pioneer"),
-  extract_curves(ctol_jan_building, "January",  "Building"),
-  extract_curves(ctol_jan_mature,   "January",  "Mature")
+  extract_curves(ctol_nov_mature,   "November", "Mature")
 )
 
 # AVERAGE TO GROUP LEVEL 
 
 cold_group_curves <- cold_pred_curves |>
   mutate(
-    month     = factor(month,     levels = c("November", "January")),
+    month     = factor(month,     levels = c("November")),
     age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer",
                                               "Building",   "Mature"))
   ) |>
@@ -1691,16 +1708,13 @@ cold_t50_raw <- bind_rows(
   extract_t50(ctol_nov_nb,       "November", "Newly Burnt"),
   extract_t50(ctol_nov_pioneer,  "November", "Pioneer"),
   extract_t50(ctol_nov_building, "November", "Building"),
-  extract_t50(ctol_nov_mature,   "November", "Mature"),
-  extract_t50(ctol_jan_pioneer,  "January",  "Pioneer"),
-  extract_t50(ctol_jan_building, "January",  "Building"),
-  extract_t50(ctol_jan_mature,   "January",  "Mature")
+  extract_t50(ctol_nov_mature,   "November", "Mature")
 )
 
 # Summarise to group level
 cold_t50_points <- cold_t50_raw |>
   mutate(
-    month     = factor(month,     levels = c("November", "January")),
+    month     = factor(month,     levels = c("November")),
     age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer",
                                               "Building",   "Mature"))
   ) |>
@@ -1727,22 +1741,19 @@ cold_t50_points <- cold_t50_raw |>
 
 ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
                                linetype = month, colour = month)) +
-  
-       # Raw data points — small and transparent
+
+  # Raw data points — november only
   geom_point(data = cold_subset |>
-               mutate(month     = factor(month, levels = c("November", "January")),
-                      age_class = factor(age_class, levels = c("Newly Burnt", "Pioneer",
-                                                                "Building", "Mature"))),
+               filter(month == "November") |>
+               mutate(age_class = factor(age_class,
+                                         levels = c("Newly Burnt", "Pioneer",
+                                                    "Building",    "Mature"))),
              aes(x = temp_exp, y = fv_fm_final, colour = month),
              size = 0.8, alpha = 0.3, show.legend = FALSE) +
 
   geom_line(linewidth = 0.9) +
- 
-  geom_line(linewidth = 0.9) +
-  scale_linetype_manual(values = c("November" = "solid",
-                                   "January"  = "solid")) +
-  scale_colour_manual(values = c("November" = "#7B2D8B",
-                                 "January"  = "#C589D8")) +
+
+  scale_colour_manual(values = c("November" = "#7B2D8B")) +
 
   # CI error bars — only where n > 1
   geom_errorbarh(data = cold_t50_points |> filter(!is.na(low_T50)),
@@ -1777,11 +1788,10 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   geom_text(data = cold_t50_points,
             aes(x      = mean_T50,
                 y      = mean_pred,
-                label  = paste0(ifelse(month == "November", "Nov", "Jan"),
-                                ", ", round(mean_T50, 1), "C"),
+                 label  = paste0("Nov, ", round(mean_T50, 1), "C"),
                 colour = month),
-            vjust    = ifelse(cold_t50_points$month == "November",  2, -2),
-            hjust    = ifelse(cold_t50_points$month == "November", 1.2,  0.1),
+            vjust    = 2,
+            hjust    = 1.2,
             size     = 2.5,
             fontface = "bold",
             show.legend = FALSE) +
@@ -1818,7 +1828,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   )
 
 ggsave(
-  here("output", "T50_cold_group_curves_age_class_w_raw.png"),
+  here("output", "T50_cold_group_curves_only_nov.png"),
   width = 8,
   height = 6,
   dpi = 300
