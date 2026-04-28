@@ -1212,10 +1212,6 @@ Results from performance model check is OK for model WITHOUT interaction. I woul
 
 #### Export model result in a table
 
-```{r}
-
-```
-
 ### COLD
 
 ```{r}
@@ -1359,7 +1355,69 @@ check_model(cold_model)
 
 #### Export model result in a table?
 
-------------------------------------------------------------------------
+### CORRELATION HEAT VS FREEZING TOLERANCE 
+
+```{r}
+#| label: correlation T50 hot vs cold nov
+#| message: false
+
+# Rename T50 columns and join on shared id, keeping only needed columns
+# Filtering for only November at datapoints from Jan cold are few and unreliable
+df_joined <- T50_hot |> 
+  rename(T50_hot = T50) |> 
+  select(id, month, age_class, plant_nr, T50_hot) |> 
+  filter(month == "November") |> 
+  inner_join(
+    T50_cold |>  rename(T50_cold = T50) |>  select(id, T50_cold),
+    by = "id"
+  ) |> 
+  mutate(month = factor(month, levels = c("November", "January")))
+
+# visual plot with trendline 
+ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
+  geom_point(size = 3, alpha = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, colour = "steelblue", linetype = "solid") +
+  labs(
+    title = "Correlation between heat and freezing tolerance",
+    x = "T50 Heat (C) — higher = more tolerant",
+    y = "T50 Cold (C) — lower = more tolerant"
+  ) +
+  theme_classic(base_size = 13)
+# relatively flat, shows no clear direction
+
+# formal test
+# spearman correlation: makes no assumptions about normality or homoscedasticity, robust to outliers
+
+cor_spearman <- cor.test(df_joined$T50_hot, df_joined$T50_cold, method = "spearman")
+
+# Plot
+ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
+  geom_point(size = 3, alpha = 0.8, colour = "#7B2D8B") +
+  geom_smooth(method = "lm", se = TRUE, colour = "grey30", linetype = "dashed") +
+  annotate("text",
+           x = Inf, y = -Inf,
+           hjust = 1.1, vjust = -1,
+           label = paste0("rho = ", round(cor_spearman$estimate, 3),   
+                          ", p = ", round(cor_spearman$p.value, 3)),    
+           size = 4.5, colour = "grey20") +
+  labs(
+    title = "Correlation between November heat and freezing tolerance",
+    x = "T50 (C), higher = more heat tolerant",
+    y = "T50 (C), lower = more freezing tolerant"
+  ) +
+  theme_classic(base_size = 13) +
+  theme(legend.position = "right")
+
+# save fig to output folder 
+ggsave(
+  here("output", "correlation_T50_hot_cold_nov.png"),
+  width  = 8,
+  height = 6,
+  dpi    = 300
+)
+
+# November: no significant relashipnship between heat and freezing tolerance, (Spearman's ρ = -0.015, p = 0.941, n = 30)
+```
 
 #### Plot response curves and T50 for EGU and thesis
 
