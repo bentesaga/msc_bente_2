@@ -1390,33 +1390,60 @@ ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
 
 cor_spearman <- cor.test(df_joined$T50_hot, df_joined$T50_cold, method = "spearman")
 
-# Plot
+
+# November: no significant relashipnship between heat and freezing tolerance, (Spearman's ρ = -0.015, p = 0.941, n = 30)
+
+
 ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
-  geom_point(size = 3, alpha = 0.8, colour = "#7B2D8B") +
-  geom_smooth(method = "lm", se = TRUE, colour = "grey30", linetype = "dashed") +
+  # ── Partition lines ────────────────────────────────────────────────────────
+  geom_vline(xintercept = 51,    linetype = "dashed", linewidth = 0.3, colour = "grey50") +
+  geom_hline(yintercept = -22.5, linetype = "dashed", linewidth = 0.3, colour = "grey50") +
+  # ── Data and trend ─────────────────────────────────────────────────────────
+  geom_point(aes(shape = age_class),                   # CHANGED: shape mapped to age_class
+             size = 2, alpha = 1.2, colour = "#7B2D8B") +
+  geom_smooth(method = "lm", se = TRUE,
+              colour = "#7B2D8B", fill = "#7B2D8B",
+              linetype = "solid") +
+  # ── Correlation label ──────────────────────────────────────────────────────
   annotate("text",
-           x = Inf, y = -Inf,
-           hjust = 1.1, vjust = -1,
-           label = paste0("rho = ", round(cor_spearman$estimate, 3),   
-                          ", p = ", round(cor_spearman$p.value, 3)),    
-           size = 4.5, colour = "grey20") +
+           x = Inf, y = Inf,
+           hjust = 1.1, vjust = 1.5,
+           label = paste0("rho = ", round(cor_spearman$estimate, 3),
+                          ", p = ", round(cor_spearman$p.value, 3)),
+           size = 4, colour = "grey20") +
+  # ── Quadrant labels ────────────────────────────────────────────────────────
+  annotate("text",
+           x = 52.2, y = -28,
+           hjust = 1, vjust = 0,
+           label = "High heat tolerance\nHigh freezing tolerance",
+           size = 4, colour = "grey30", fontface = "italic") +
+  annotate("text",
+           x = 49.5, y = -16,
+           hjust = 0, vjust = 1,
+           label = "Low heat tolerance\nLow freezing tolerance",
+           size = 4, colour = "grey30", fontface = "italic") +
+  scale_y_reverse() +
   labs(
-    title = "Correlation between November heat and freezing tolerance",
-    x = "T50 (C), higher = more heat tolerant",
-    y = "T50 (C), lower = more freezing tolerant"
+    x     = "T50 heat tolerance(C)",
+    y     = "T50 freezing tolerance (C)",
+    shape = "Successional stage:"                        # CHANGED: legend title for shape
   ) +
-  theme_classic(base_size = 13) +
-  theme(legend.position = "right")
+  theme_bw(base_size = 14) +
+  theme(
+    strip.text      = element_text(face = "bold"),
+    legend.position = "bottom"
+  )
+
+
 
 # save fig to output folder 
 ggsave(
-  here("output", "correlation_T50_hot_cold_nov.png"),
+  here("output", "correlation_T50_nov_hot_cold_text_shapes.png"),
   width  = 8,
   height = 6,
   dpi    = 300
 )
 
-# November: no significant relashipnship between heat and freezing tolerance, (Spearman's ρ = -0.015, p = 0.941, n = 30)
 ```
 
 #### Plot response curves and T50 for EGU and thesis
@@ -1659,8 +1686,8 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
   # top-left = Newly Burnt, top-right = Pioneer
   # bottom-left = Building, bottom-right = Mature
   facet_wrap(~ age_class,
-             ncol = 2,
-             nrow = 2) +
+             ncol = 1,
+             nrow = 4) +
 
   labs(
     title    = "Heat response",

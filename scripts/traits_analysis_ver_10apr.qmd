@@ -19,6 +19,8 @@ library(reshape2)
 
 ## Data import
 
+HAVE TO INCLUDE DRY WWTIGHT AND TOP HEIGHT AS WELL
+
 ```{r}
 #| label: data import 
 #| message: false
@@ -292,10 +294,21 @@ Checking if traits correlate with T50 **independent** of time and age class.
 #| label: linear model   
 #| message: false
 
-# linear model for T50 response to triats, no interactions included
+# Test each trait separately. Know that age class have no effect on t50. 
+lm_sla <- lm(T50 ~ sla + month, data = trait_T50_hot)
+summary(lm_sla)
+lm_thickness <- lm(T50 ~ leaf_thickness_mean + month, data = trait_T50_hot)
+summary(lm_thickness)
+lm_ldmc <- lm(T50 ~ ldmc + month, data = trait_T50_hot)
+summary(lm_ldmc)
+# trait not significant in any of these. 
+
+# linear model for T50 response to traits, no interactions included
 lm_traits_T50_hot <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class, data = trait_T50_hot) 
 
 anova(lm_traits_T50_hot) #look at and report results
+
+
 summary(lm_traits_T50_hot) # look at and report results
 
 # summed up: thickness, ldmc, month significant predictors
@@ -311,8 +324,8 @@ library(performance)
 check_model(lm_traits_T50_hot)  
 
 # all panels look good
-# especially important to note: was concerned about month possibly masking effects of traits, but based on relatively low collinearity this should not be a problem
-# model might hold as is
+# especially important to note: was concerned about month possibly masking effects of traits, but based on relatively low collinearity this should not be a problem, but worth commenting on
+# model hold as is
 ```
 
 NOTE/QUESTION: Despite the model diagnostics looking good, the plots of traits vs T50 faceted by month show relationships in opposite directions. Is this reason to worry? Need to investigate.
@@ -375,6 +388,8 @@ AIC(lm_traits_T50_hot, lm_ldmc_int) # slightly better for the interaction includ
 # do not test interactions between traits, only limits degree of freedom
 ```
 
+Also tested PCA, traits not correlated enough to be collapsed into one single axis. Better to keep lm approach, anova type I? interction or not? Remember to comment on VIF for sla, although it is not high enough to invalidate the model.
+
 ## Export model output
 
 ```{r}
@@ -384,11 +399,10 @@ AIC(lm_traits_T50_hot, lm_ldmc_int) # slightly better for the interaction includ
 ## Clean final visualization plot
 
 ```{r}
-
 # plot for each trait x t50 hot. from modeled data. facet by month and trait, giving. 
 ```
 
-HUSK: LOOKING AT T50 RELATED TO TRAITS - men uavhengig av måned og aldersklasse! Så må basere modellen på det.
+#### EGU only LDMC plot
 
 ## COLD
 
@@ -414,7 +428,7 @@ trait_T50_cold <- trait_data_means |>
 #| label: exploratory plots    
 #| message: false
 
-# faceting by month, as data availability 
+# faceting by month, as data availability differ
 
 # mean thickness vs T50 cold
 thickness_vs_T50_cold <- ggplot(trait_T50_cold, aes(x = leaf_thickness_mean, y = T50)) +
@@ -486,4 +500,106 @@ check_model(lm_traits_T50_cold_nov)  # a bit better
 
 ```{r}
 #plot of modeled data
+```
+
+**EGU PLOT LDMC**
+
+```{r}
+
+
+library(ggeffects)
+library(ggplot2)
+library(dplyr)
+
+# ── Partial effects ───────────────────────────────────────────────────────────
+
+p_hot <- ggpredict(lm_traits_T50_hot,
+                   terms = c("ldmc", "month")) |>
+  as.data.frame() |>
+  mutate(
+    group     = recode(group, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Heat tolerance"
+  )
+
+p_cold <- ggpredict(lm_traits_T50_cold_nov,
+                    terms = "ldmc") |>
+  as.data.frame() |>
+  mutate(
+    group     = "Autumn",
+    tolerance = "Freezing tolerance"
+  )
+
+combined <- bind_rows(p_hot, p_cold)
+
+# ── Raw data ──────────────────────────────────────────────────────────────────
+
+raw_hot <- trait_T50_hot |>
+  select(T50, ldmc, month) |>
+  mutate(
+    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Heat tolerance"
+  )
+
+raw_cold <- trait_T50_cold_nov |>
+  select(T50, ldmc, month) |>
+  mutate(
+    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Freezing tolerance"
+  )
+
+raw_all <- bind_rows(raw_hot, raw_cold)
+
+# ── Palette ───────────────────────────────────────────────────────────────────
+
+purple_dark  <- "#7B2D8B"
+purple_light <- "#C589D8"
+
+# ── Facet order ───────────────────────────────────────────────────────────────
+
+level_order <- c("Freezing tolerance", "Heat tolerance")  # CHANGED: cold left, heat right
+
+combined$tolerance <- factor(combined$tolerance, levels = level_order)
+raw_all$tolerance  <- factor(raw_all$tolerance,  levels = level_order)
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+
+ggplot() +
+  geom_ribbon(data = combined,
+              aes(x = x, ymin = conf.low, ymax = conf.high,
+                  fill = group),
+              alpha = 0.2) +
+  geom_line(data = combined,
+            aes(x = x, y = predicted, color = group),
+            linewidth = 1) +
+  geom_point(data = raw_all,
+             aes(x = ldmc, y = T50, color = month),
+             alpha = 0.5, size = 2) +
+  facet_wrap(~ tolerance, scales = "free_y") +
+  scale_color_manual(values = c("Autumn" = purple_dark,
+                                "Winter" = purple_light)) +
+  scale_fill_manual(values  = c("Autumn" = purple_dark,
+                                "Winter" = purple_light)) +
+  labs(
+    x     = expression("LDMC (mg g"^-1*")"),
+    y     = "T50 (C)",
+    color = "Season",
+    fill  = "Season"
+  ) +
+  guides(color = guide_legend(title = "Season"),  # MOVED outside theme()
+         fill  = guide_legend(title = "Season")) +
+  theme_bw() +
+  theme(
+    strip.text      = element_text(face = "bold", size = 14),
+    legend.position = "bottom",
+    legend.title    = element_text(face = "bold"),
+     legend.margin   = margin(t = -10) 
+  )
+
+
+ggsave(
+  here("output", "ldmc_vs_T50_hot_cold.png"),
+  width = 8,
+  height = 6,
+  dpi = 300
+)
 ```
