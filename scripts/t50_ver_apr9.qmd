@@ -1341,7 +1341,7 @@ summary(cold_model) # significance of cintercept in summary rarely interesting
 # in summary estimates are important, trust the anova for significance 
 ```
 
-#### Cold model performance 
+#### Cold model performance
 
 ```{r}
 #| label: checking model preformance 
@@ -1355,7 +1355,7 @@ check_model(cold_model)
 
 #### Export model result in a table?
 
-### CORRELATION HEAT VS FREEZING TOLERANCE 
+### CORRELATION HEAT VS FREEZING TOLERANCE
 
 ```{r}
 #| label: correlation T50 hot vs cold nov
@@ -1404,6 +1404,8 @@ ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
   geom_smooth(method = "lm", se = TRUE,
               colour = "#7B2D8B", fill = "#7B2D8B",
               linetype = "solid") +
+  
+  facet_grid(rows=vars(age_class)) +
   # ── Correlation label ──────────────────────────────────────────────────────
   annotate("text",
            x = Inf, y = Inf,
@@ -1438,7 +1440,7 @@ ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
 
 # save fig to output folder 
 ggsave(
-  here("output", "correlation_T50_nov_hot_cold_text_shapes.png"),
+  here("output", "correlation_T50_nov_hot_cold_text_shapes_facet.png"),
   width  = 8,
   height = 6,
   dpi    = 300
@@ -1581,6 +1583,7 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
              nrow = 2) +
 
   labs(
+    title    = "Heat tolerance",                             
     x        = "Temperature (C)",
     y        = "Fv/Fm",
     linetype = NULL,
@@ -1609,7 +1612,7 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
 # save fig to output folder 
 ggsave(
   here("output", "T50_hot_group_curves_age_class.png"),
-  width  = 10,
+  width  = 8,
   height = 6,
   dpi    = 300
 )
@@ -1635,10 +1638,15 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
 
   # solid November, dashed January
   scale_linetype_manual(values = c("November" = "solid",
-                                   "January"  = "solid")) +
-  scale_colour_manual(values = c("November" = "#7B2D8B",   # dark purple
-                                "January"  = "#C589D8")) + # light purple
+                                   "January"  = "solid"),
+                        labels = c("November" = "Autumn (Nov)",  # CHANGED
+                                   "January"  = "Winter (Jan)")) + # CHANGED
 
+  scale_colour_manual(values = c("November" = "#7B2D8B",
+                                 "January"  = "#C589D8"),
+                      labels = c("November" = "Autumn (Nov)",   # CHANGED
+                                 "January"  = "Winter (Jan)")) + # CHANGED
+  
     # Horizontal error bar showing 95% CI along x-axis
   geom_errorbarh(data = t50_points,
                  aes(y      = mean_pred,
@@ -1651,7 +1659,7 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
   # T50 point — now mapped to shape so it appears in legend
   geom_point(data = t50_points,
              aes(x = mean_T50, y = mean_pred,
-                 colour = month, shape = "T50"),
+                 colour = month, shape = "T50, 50% of Fv/Fm at control temp"),
              size = 3.5, show.legend = TRUE) +
   
 
@@ -1686,15 +1694,15 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
   # top-left = Newly Burnt, top-right = Pioneer
   # bottom-left = Building, bottom-right = Mature
   facet_wrap(~ age_class,
-             ncol = 1,
-             nrow = 4) +
+             ncol = 2,
+             nrow = 2) +
 
   labs(
     title    = "Heat response",
     x        = "Temperature (C)",
     y        = "Fv/Fm",
-    linetype = NULL,
-    colour   = NULL,
+    colour   = "Season:",                                        # CHANGED
+    linetype = "Season:",                                        # CHANGED
     shape    = NULL
   ) +
 
@@ -1720,8 +1728,8 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
 
 # save fig to output folder 
 ggsave(
-  here("output", "T50_hot_group_curves_age_class_title.png"),
-  width  = 8,
+  here("output", "T50_hot_group_curves_age_class_labels.png"),
+  width  = 10,
   height = 6,
   dpi    = 300
 )
@@ -1882,7 +1890,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
             show.legend = FALSE) +
 
   scale_shape_manual(values = c("T50" = 16)) +
-  facet_wrap(~ age_class, ncol = 2, nrow = 2) +
+  facet_wrap(~ age_class, ncol = 1, nrow = 4) +
 
   labs(
     title    = "Freezing response",         
@@ -1894,7 +1902,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   ) +
 
   scale_y_continuous(limits = c(0, 0.9)) +
-  coord_cartesian(xlim = c(-40, 5)) +
+  coord_cartesian(xlim = c(-35, 5)) +
 
   guides(
     colour = guide_legend(override.aes = list(shape    = NA)),
@@ -1913,9 +1921,9 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   )
 
 ggsave(
-  here("output", "T50_cold_group_curves_only_nov.png"),
-  width = 8,
-  height = 6,
+  here("output", "T50_cold_group_curves_only_nov_vertical_35.png"),
+  width = 4,
+  height = 8,
   dpi = 300
 )
 ```

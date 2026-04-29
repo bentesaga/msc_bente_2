@@ -603,3 +603,104 @@ ggsave(
   dpi = 300
 )
 ```
+
+```{r}
+# adding shapes for age classes 
+
+# ── Raw data ──────────────────────────────────────────────────────────────────
+
+raw_hot <- trait_T50_hot |>
+  select(T50, ldmc, month, age_class) |>                     # CHANGED: added age_class
+  mutate(
+    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Heat tolerance"
+  )
+
+raw_cold <- trait_T50_cold_nov |>
+  select(T50, ldmc, month, age_class) |>                     # CHANGED: added age_class
+  mutate(
+    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Freezing tolerance"
+  )
+
+raw_all <- bind_rows(raw_hot, raw_cold) |>
+  mutate(
+    age_class = factor(age_class, levels = c(                # CHANGED: set order
+      "Newly Burnt", "Pioneer", "Building", "Mature"
+    ))
+  )
+
+# ── Shape scale ────────────────────────────────────────────────────────────────
+shape_scale <- scale_shape_manual(                          # CHANGED: new scale
+  values = c(
+    "Newly Burnt" = 21,
+    "Pioneer"     = 22,
+    "Building"    = 24,
+    "Mature"      = 25
+  ),
+  name = "Successional stage"
+)
+
+# ── Plot ──────────────────────────────────────────────────────────────────────
+
+ggplot() +
+  geom_ribbon(data = combined,
+              aes(x = x, ymin = conf.low, ymax = conf.high,
+                  fill = group),
+              alpha = 0.2) +
+  geom_line(data = combined,
+            aes(x = x, y = predicted, color = group),
+            linewidth = 1) +
+  geom_point(data = raw_all,
+             aes(x = ldmc, y = T50,
+                 fill  = month,                              # CHANGED: use fill
+                 shape = age_class),                         # CHANGED: add shape
+             colour = "white",                               # CHANGED: white border
+             alpha = 0.7, size = 2.5) +                      # CHANGED: slightly larger
+  facet_wrap(~ tolerance, scales = "free_y") +
+  scale_color_manual(values = c("Autumn" = purple_dark,
+                                "Winter" = purple_light)) +
+  scale_fill_manual(values  = c("Autumn" = purple_dark,
+                                "Winter" = purple_light)) +
+  shape_scale +                                              # CHANGED: add shape scale
+  labs(
+    x     = expression("LDMC (mg g"^-1*")"),
+    y     = "T50 (C)",
+    color = "Season",
+    fill  = "Season",
+    shape = "Successional stage"                             # CHANGED: legend title
+  ) +
+  
+  
+  
+  guides(
+  color = "none",
+  fill = guide_legend(
+    title = "Season",
+    nrow = 1,
+    override.aes = list(shape = 21, colour = "white")
+  ),
+  shape = guide_legend(
+    title = "Successional stage",
+    nrow = 1
+  )
+) +
+   theme(
+    strip.text      = element_text(face = "bold", size = 14),
+    legend.position = "bottom",
+    legend.box      = "vertical",
+    legend.direction = "horizontal",
+    legend.title    = element_text(face = "bold"),
+    legend.margin   = margin(t = -10)
+)
+
+ggsave(
+  here("output", "ldmc_vs_T50_hot_cold_shapes.png"),
+  width = 8,
+  height = 6,
+  dpi = 300
+)  
+```
+
+```{}
+```
