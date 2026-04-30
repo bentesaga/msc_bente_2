@@ -232,6 +232,9 @@ trait_cor_by_month #  all within +/- 0.7 so no problematic correlations for lm m
 trait_T50_hot <- trait_data_means |>
   dplyr::left_join(T50_hot_data, by = "id") |> 
    mutate(month = factor(month, levels = c("November", "January"))) |> 
+   mutate(age_class = factor(age_class, levels = c(
+    "Newly Burnt", "Pioneer", "Building", "Mature"
+  ))) |> 
   na.omit() # remove rows with NA
 
 ```
@@ -289,6 +292,10 @@ ldmc_vs_T50_hot
 ## Linear model for traits vs T50 hot
 
 Checking if traits correlate with T50 **independent** of time and age class.
+
+```{r}
+
+```
 
 ```{r}
 #| label: linear model   
@@ -416,6 +423,9 @@ Also tested PCA, traits not correlated enough to be collapsed into one single ax
 trait_T50_cold <- trait_data_means |>
   dplyr::left_join(T50_cold_data, by = "id") |> 
    mutate(month = factor(month, levels = c("November", "January"))) |> 
+   mutate(age_class = factor(age_class, levels = c(
+    "Newly Burnt", "Pioneer", "Building", "Mature"
+  ))) |> 
    # now filter out extremely low, low_prop T50 estimates
    filter(T50 >= -35) |> 
    filter(!is.na(T50))  # only remove rows where T50 itself is NA
@@ -605,43 +615,68 @@ ggsave(
 ```
 
 ```{r}
-# adding shapes for age classes 
+# adding colour and lines for age classes
 
-# ── Raw data ──────────────────────────────────────────────────────────────────
-
-raw_hot <- trait_T50_hot |>
-  select(T50, ldmc, month, age_class) |>                     # CHANGED: added age_class
+# ── Partial effects per age class ─────────────────────────────────────────────
+p_hot_age <- ggpredict(lm_traits_T50_hot,
+                       terms = c("ldmc", "month", "age_class")) |>
+  as.data.frame() |>
   mutate(
-    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    group     = recode(group, "November" = "Autumn", "January" = "Winter"),
     tolerance = "Heat tolerance"
-  )
+  ) |>
+  select(-any_of("panel"))
 
-raw_cold <- trait_T50_cold_nov |>
-  select(T50, ldmc, month, age_class) |>                     # CHANGED: added age_class
+p_cold_age <- ggpredict(lm_traits_T50_cold_nov,
+                        terms = c("ldmc", "age_class")) |>
+  as.data.frame() |>
   mutate(
-    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    group     = "Autumn",
     tolerance = "Freezing tolerance"
-  )
+  ) 
 
-raw_all <- bind_rows(raw_hot, raw_cold) |>
+combined_age <- bind_rows(p_hot_age, p_cold_age) |>
   mutate(
-    age_class = factor(age_class, levels = c(                # CHANGED: set order
+    tolerance = factor(tolerance, levels = level_order),
+    age_class = factor(age_class, levels = c(
       "Newly Burnt", "Pioneer", "Building", "Mature"
     ))
   )
 
-# ── Shape scale ────────────────────────────────────────────────────────────────
-shape_scale <- scale_shape_manual(                          # CHANGED: new scale
-  values = c(
-    "Newly Burnt" = 21,
-    "Pioneer"     = 22,
-    "Building"    = 24,
-    "Mature"      = 25
-  ),
-  name = "Successional stage"
+# ── Colour palette (same as previous script) ──────────────────────────────────
+age_colours <- c(
+  "Newly Burnt" = "#D55E00",
+  "Pioneer"     = "#E69F00",
+  "Building"    = "#56B4E9",
+  "Mature"      = "#009E73"
 )
 
-# ── Plot ──────────────────────────────────────────────────────────────────────
+# ── Raw data ───────────────────────────────────────────────────────────────────
+raw_hot <- trait_T50_hot |>
+  select(T50, ldmc, month, age_class) |>
+  mutate(
+    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Heat tolerance"
+  )
+raw_cold <- trait_T50_cold_nov |>
+  select(T50, ldmc, month, age_class) |>
+  mutate(
+    month     = recode(month, "November" = "Autumn", "January" = "Winter"),
+    tolerance = "Freezing tolerance"
+  )
+raw_all <- bind_rows(raw_hot, raw_cold) |>
+  mutate(
+    age_class = factor(age_class, levels = c(
+      "Newly Burnt", "Pioneer", "Building", "Mature"
+    ))
+  )
+
+# ── Plot ───────────────────────────────────────────────────────────────────────
+#install.packages("ggnewscale")
+library(ggnewscale)
+
+
+#---- line for each age class
 
 ggplot() +
   geom_ribbon(data = combined,
@@ -651,51 +686,67 @@ ggplot() +
   geom_line(data = combined,
             aes(x = x, y = predicted, color = group),
             linewidth = 1) +
+  scale_color_manual(name = "Season",
+                     values = c("Autumn" = purple_dark,
+                                "Winter" = purple_light)) +
+  scale_fill_manual(name = "Season",
+                    values = c("Autumn" = purple_dark,
+                               "Winter" = purple_light)) +
+  new_scale_color() +
+  new_scale_fill() +
+
+  # ── Per-age-class predicted lines ──────────────────────────────────────────
+ 
+  geom_ribbon(data = combined_age,
+              aes(x = x, ymin = conf.low, ymax = conf.high,
+                  fill = age_class,
+                  group = interaction(age_class, group)),
+              alpha = 0.15,
+              show.legend = FALSE) +
+  
+geom_line(data = combined_age,
+            aes(x = x, y = predicted,
+                colour = age_class,
+                group  = interaction(age_class, group)),
+            linewidth = 0.8,
+            linetype  = "solid",
+            show.legend = FALSE) +
+  
+  
   geom_point(data = raw_all,
              aes(x = ldmc, y = T50,
-                 fill  = month,                              # CHANGED: use fill
-                 shape = age_class),                         # CHANGED: add shape
-             colour = "white",                               # CHANGED: white border
-             alpha = 0.7, size = 2.5) +                      # CHANGED: slightly larger
+                 colour = age_class),
+             alpha = 0.8, size = 2.5) +
+  scale_color_manual(name   = "Successional stage",
+                     values = age_colours) +
+  scale_fill_manual(values  = age_colours,
+                    guide   = "none") +
+
   facet_wrap(~ tolerance, scales = "free_y") +
-  scale_color_manual(values = c("Autumn" = purple_dark,
-                                "Winter" = purple_light)) +
-  scale_fill_manual(values  = c("Autumn" = purple_dark,
-                                "Winter" = purple_light)) +
-  shape_scale +                                              # CHANGED: add shape scale
   labs(
-    x     = expression("LDMC (mg g"^-1*")"),
-    y     = "T50 (C)",
-    color = "Season",
-    fill  = "Season",
-    shape = "Successional stage"                             # CHANGED: legend title
+    x = expression("LDMC (mg g"^-1*")"),
+    y = "T50 (C)"
   ) +
-  
-  
-  
   guides(
-  color = "none",
-  fill = guide_legend(
-    title = "Season",
-    nrow = 1,
-    override.aes = list(shape = 21, colour = "white")
-  ),
-  shape = guide_legend(
-    title = "Successional stage",
-    nrow = 1
-  )
-) +
-   theme(
-    strip.text      = element_text(face = "bold", size = 14),
-    legend.position = "bottom",
-    legend.box      = "vertical",
+    fill   = guide_legend(
+      title = "Season", nrow = 1,
+      override.aes = list(shape = 21, colour = "white")
+    ),
+    colour = guide_legend(title = "Successional stage", nrow = 1)
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    strip.text       = element_text(face = "bold", size = 14),
+    legend.position  = "bottom",
+    legend.box       = "vertical",
     legend.direction = "horizontal",
-    legend.title    = element_text(face = "bold"),
-    legend.margin   = margin(t = -10)
-)
+    legend.title     = element_text(face = "bold"),
+    legend.margin    = margin(t = -10)
+  )
+
 
 ggsave(
-  here("output", "ldmc_vs_T50_hot_cold_shapes.png"),
+  here("output", "ldmc_vs_T50_hot_cold_colour_x.png"),
   width = 8,
   height = 6,
   dpi = 300

@@ -1373,18 +1373,6 @@ df_joined <- T50_hot |>
   ) |> 
   mutate(month = factor(month, levels = c("November", "January")))
 
-# visual plot with trendline 
-ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
-  geom_point(size = 3, alpha = 0.8) +
-  geom_smooth(method = "loess", se = TRUE, colour = "steelblue", linetype = "solid") +
-  labs(
-    title = "Correlation between heat and freezing tolerance",
-    x = "T50 Heat (C) — higher = more tolerant",
-    y = "T50 Cold (C) — lower = more tolerant"
-  ) +
-  theme_classic(base_size = 13)
-# relatively flat, shows no clear direction
-
 # formal test
 # spearman correlation: makes no assumptions about normality or homoscedasticity, robust to outliers
 
@@ -1405,7 +1393,7 @@ ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
               colour = "#7B2D8B", fill = "#7B2D8B",
               linetype = "solid") +
   
-  facet_grid(rows=vars(age_class)) +
+  #facet_grid(rows=vars(age_class)) +
   # ── Correlation label ──────────────────────────────────────────────────────
   annotate("text",
            x = Inf, y = Inf,
@@ -1446,6 +1434,94 @@ ggsave(
   dpi    = 300
 )
 
+```
+
+correlation plot with trend lines for each age class
+
+```{r}
+
+
+
+
+# Define a colour palette for age classes
+age_colours <- c(
+  "Newly Burnt" = "#D55E00",   # burnt orange
+  "Pioneer"     = "#E69F00",   # amber
+  "Building"    = "#56B4E9",   # sky blue
+  "Mature"      = "#009E73"    # teal green
+)
+
+
+
+ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
+  # ── Partition lines ────────────────────────────────────────────────────────
+  geom_vline(xintercept = 51,    linetype = "dashed", linewidth = 0.3, colour = "grey50") +
+  geom_hline(yintercept = -22.5, linetype = "dashed", linewidth = 0.3, colour = "grey50") +
+  # ── Per-age-class trend lines ──────────────────────────────────────────────
+  geom_smooth(aes(colour = age_class, fill = age_class),
+              method = "lm", se = TRUE,
+              linetype = "solid", alpha = 0.15,
+              show.legend = TRUE) +
+  # ── Overall trend line (mapped to linetype for legend entry) ───────────────
+  geom_smooth(aes(linetype = "Mean trendline"),
+              method = "lm", se = TRUE,
+              colour = "#7B2D8B", fill = "#7B2D8B",
+              alpha = 0.15, linewidth = 1.2,
+              show.legend = TRUE) +
+  # ── Points ─────────────────────────────────────────────────────────────────
+  geom_point(aes(colour = age_class),
+             size = 2.5, alpha = 0.9,
+             show.legend = TRUE) +
+  
+  # ── Correlation label ──────────────────────────────────────────────────────
+  annotate("text",
+           x = Inf, y = Inf,
+           hjust = 1.1, vjust = 1.5,
+           label = paste0("rho = ", round(cor_spearman$estimate, 3),
+                          ", p = ", round(cor_spearman$p.value, 3)),
+           size = 4, colour = "grey20") +
+  # ── Quadrant labels ────────────────────────────────────────────────────────
+  annotate("text",
+           x = 52.2, y = -28,
+           hjust = 1, vjust = 0,
+           label = "High heat tolerance\nHigh freezing tolerance",
+           size = 4.5, colour = "grey30", fontface = "italic") +
+  annotate("text",
+           x = 49.5, y = -16,
+           hjust = 0, vjust = 1,
+           label = "Low heat tolerance\nLow freezing tolerance",
+           size = 4.5, colour = "grey30", fontface = "italic") +
+  scale_colour_manual(values = age_colours) +
+  scale_fill_manual(values = age_colours) +
+  scale_linetype_manual(values = c("Mean trendline" = "dashed"),
+                        name = NULL) +
+  scale_y_reverse() +
+  labs(
+    title  = "Freezing vs heat tolerance (autumn)",
+    x      = "T50 heat tolerance (\u00b0C)",
+    y      = "T50 freezing tolerance (\u00b0C)",
+    colour = "Successional stage:",
+    fill   = "Successional stage:"
+  ) +
+  guides(
+    colour   = guide_legend(override.aes = list(linetype = 0, fill = NA)),
+    fill     = "none",
+    linetype = guide_legend(override.aes = list(colour = "#7B2D8B"))
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    strip.text      = element_text(face = "bold"),
+    legend.position = "bottom",
+    plot.title      = element_text(hjust = 0.5, size = 14, face = "bold"),
+  )
+
+# save fig to output folder 
+ggsave(
+  here("output", "correlation_T50_nov_hot_cold_colour_by_age_no_shape_toptext.png"),
+  width  = 9,
+  height = 6,
+  dpi    = 300
+)
 ```
 
 #### Plot response curves and T50 for EGU and thesis
@@ -1618,6 +1694,8 @@ ggsave(
 )
 ```
 
+raw data plotted
+
 ```{r}
 #| label: hot plot curve t50 faceted by age class
 #| message: false
@@ -1682,7 +1760,7 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
             aes(x      = mean_T50,
                 y      = mean_pred,
              label = paste0(ifelse(month == "November", "Nov", "Jan"),
-               ", ", round(mean_T50, 1), "C"),
+               ", ", round(mean_T50, 1), "\u00b0C"),
                 colour = month),
             vjust       = ifelse(t50_points$month == "November", 2, -2),
             hjust       = ifelse(t50_points$month == "November", 1.2, 0.1),
@@ -1694,12 +1772,12 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
   # top-left = Newly Burnt, top-right = Pioneer
   # bottom-left = Building, bottom-right = Mature
   facet_wrap(~ age_class,
-             ncol = 2,
-             nrow = 2) +
+             ncol = 1,
+             nrow = 4) +
 
   labs(
     title    = "Heat response",
-    x        = "Temperature (C)",
+    x        = "Temperature (\u00b0C)",
     y        = "Fv/Fm",
     colour   = "Season:",                                        # CHANGED
     linetype = "Season:",                                        # CHANGED
@@ -1728,9 +1806,9 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
 
 # save fig to output folder 
 ggsave(
-  here("output", "T50_hot_group_curves_age_class_labels.png"),
-  width  = 10,
-  height = 6,
+  here("output", "T50_hot_group_curves_age_class_labels_WIDE_.png"),
+  width  = 6,
+  height = 10,
   dpi    = 300
 )
 ```
@@ -1881,7 +1959,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   geom_text(data = cold_t50_points,
             aes(x      = mean_T50,
                 y      = mean_pred,
-                 label  = paste0("Nov, ", round(mean_T50, 1), "C"),
+                 label  = paste0("Nov, ", round(mean_T50, 1), "\u00b0C"),
                 colour = month),
             vjust    = 2,
             hjust    = 1.2,
@@ -1894,7 +1972,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
 
   labs(
     title    = "Freezing response",         
-    x        = "Temperature (C)",
+    x        = "Temperature (\u00b0C)",
     y        = "Fv/Fm",
     linetype = NULL,
     colour   = NULL,
@@ -1921,9 +1999,9 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   )
 
 ggsave(
-  here("output", "T50_cold_group_curves_only_nov_vertical_35.png"),
-  width = 4,
-  height = 8,
+  here("output", "T50_cold_group_curves_only_nov_vertical_LAST_.png"),
+  width = 5,
+  height = 10,
   dpi = 300
 )
 ```
