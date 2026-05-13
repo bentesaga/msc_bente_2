@@ -16,7 +16,7 @@ library(here)
 library(thermalTolerance) 
 
 # remember to re-install if Richard changes package, found on github, installed using: 
-# DO NOT install the most recent version. remotes::install_github("richardjtelford/thermalTolerance") 
+# remotes::install_github("richardjtelford/thermalTolerance") 
 # this package estimates of 3 different PSII heat tolerance metrics, Tcrit, T50 and T95. Can take each individual nr plant into account, fits curves by randomly resampling for each individual by bootstrapping.
 ```
 
@@ -517,150 +517,21 @@ Prop_success stays relatively similar - except for November_Building_2 which is 
 
 #### JANUARY SUBSET CLEANED COMPARED TO RAW
 
-do the same as above for january data. more weird points that needs adressing here. maybe better to run on subsets instead of all january data at once
-
-```{r}
-#| label: january raw vs cleaned   
-#| message: false
-
-# subset to January
-subset_jan <- hot_subset |>
-  filter(month == "January")
-
-# setting specific points with abnormal starting and ending FvFm values to NA to se how it affects the T50 predictions 
-subset_jan_cleaned <- subset_jan |>
-  mutate(fv_fm_final = case_when(
-    age_class == "Pioneer"  & plant_nr == 1 & temp_exp == 20 ~ NA_real_,  # low starting value
-    age_class == "Pioneer"  & plant_nr == 2 & temp_exp == 20 ~ NA_real_,  # low starting value
-    age_class == "Pioneer"  & plant_nr == 3 & temp_exp == 20 ~ NA_real_,  # low curve
-    age_class == "Pioneer"  & plant_nr == 4 & temp_exp == 20 ~ NA_real_,  # low curve
-    age_class == "Pioneer"  & plant_nr == 5 & temp_exp == 20 ~ NA_real_,  # low starting value
-    age_class == "Pioneer"  & plant_nr == 6 & temp_exp == 56 ~ NA_real_,  # high ending value
-    age_class == "Building" & plant_nr == 3 & temp_exp == 20 ~ NA_real_,  # low starting value
-    age_class == "Building" & plant_nr == 4 & temp_exp == 20 ~ NA_real_,  # low starting value
-    TRUE ~ fv_fm_final
-  ))
-
-# verify points removed
-subset_jan_cleaned |>
-  group_by(age_class, plant_nr) |>
-  summarise(removed = sum(is.na(fv_fm_final)), .groups = "drop") |>
-  filter(removed > 0)
-
-# fit models for each
-# fit model for all jan data
-united_jan_raw <- unite(subset_jan, col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
-
-set.seed(8)
-htol_jan_raw <- psiiht(temperature = united_jan_raw$temp_exp, 
-                       warming = TRUE, 
-                       fvfm = united_jan_raw$fv_fm_final, 
-                       control_temp = 20,
-                       id = united_jan_raw$new_id,
-                       boots = 50)
-
-# fit model for cleaned nov data
-united_jan_cleaned <- unite(subset_jan_cleaned, col = "new_id", month, age_class, plant_nr, sep = "_", remove = TRUE)
-
-set.seed(8)
-htol_jan_cleaned <- psiiht(temperature = united_jan_cleaned$temp_exp, 
-                           warming = TRUE,
-                           fvfm = united_jan_cleaned$fv_fm_final,
-                           control_temp = 20,
-                           id = united_jan_cleaned$new_id,
-                           boots = 50)
-
-
-# extract bootstrap CI for individual T50 for each
-
-# CI extraction for nov raw data
-jan_raw_t50_ci <- purrr::map_dfr(names(htol_jan_raw$results), function(id) {
-  t50_boots <- htol_jan_raw$results[[id]]$T50
-  if (!is.numeric(t50_boots) | length(t50_boots) == 0) {
-    return(data.frame(id = id, T50.mn = NA, T50.low = NA, T50.hi = NA))
-  }
-  data.frame(
-    id      = id,
-    T50.mn  = mean(t50_boots, na.rm = TRUE),
-    T50.low = unname(quantile(t50_boots, 0.025, na.rm = TRUE)),
-    T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
-  )
-})
-
-# CI extraction for nov clean data 
-jan_cleaned_t50_ci <- purrr::map_dfr(names(htol_nov_cleaned$results), function(id) {
-  t50_boots <- htol_jan_cleaned$results[[id]]$T50
-  if (!is.numeric(t50_boots) | length(t50_boots) == 0) {
-    return(data.frame(id = id, T50.mn = NA, T50.low = NA, T50.hi = NA))
-  }
-  data.frame(
-    id      = id,
-    T50.mn  = mean(t50_boots, na.rm = TRUE),
-    T50.low = unname(quantile(t50_boots, 0.025, na.rm = TRUE)),
-    T50.hi  = unname(quantile(t50_boots, 0.975, na.rm = TRUE))
-  )
-})
-```
+Most abnormal points are low starting values.
 
 MODEL FAILS WHEN CONTROL TEMPERATURE IS SET TO NA. Because the T50 is calculated based on the starting value at control. If control is missing, it cannot calculate T50.
 
 #### EXPLORATORY: COMPARISON OF DATA AFTER TALKING TO RICHARD 16/4
 
-After discussion, the only datapoint worth setting to NA is January_Pioneer_1, 20 C, as this seems unlikely. All other points could be correct, impossible to know which ones are incorrect. Therefore keep them in.
+After discussion, the only data point worth setting to NA is January_Pioneer_1, 20 C, as this seems unlikely. All other points could be correct, impossible to know which ones are incorrect. Therefore keep them in.
 
-Set January_Pioneer_1, 20 C to NA and do sensitivity analysis. Not reccommented to use t-test afterall.
-
-```{r}
-#| label: model full data minus jan_pio_1   
-#| message: false
-
-# subset to clean hot data
-# setting January_Pioneer_1, 20 C data point to NA, as this is the only value that very certanly is incorrect
-# update: control value CANNOT be set to NA, as the model needs a starting value. 
-# removing whole individual instead. 
-
-# does not work when settin the point to NA, therefore removing whole individual instead
-
-hot_cleaned <- hot_subset |>
-  filter(!(age_class == "Pioneer" & month == "January" & plant_nr == 1))
-
-# fit model for cleaned data
-united_hot_cleaned <- unite(hot_cleaned, 
-                            col = "new_id", month, age_class, plant_nr,
-                            sep = "_", remove = TRUE)
-
-set.seed(8)
-htol_20_cleaned <- psiiht(temperature = united_hot_cleaned$temp_exp, 
-                       warming = TRUE, 
-                       fvfm = united_hot_cleaned$fv_fm_final, 
-                       control_temp = 20,
-                       id = united_hot_cleaned$new_id,
-                       boots = 50)
-
-htol_summary_20_cleaned <- summary(htol_20_cleaned) |> 
-          select(-Tcrit.mn, -T95.mn) # see summary output, only interested in T50
-
-autoplot(htol_20_cleaned) # plots logistic curves and dashed lines for Tcrit, T50, T95 
-
-#extracting the CI for the individual T50 found from bootstrapping
-htol_20_clean_t50_ci <- purrr::map_dfr(names(htol_20_cleaned$results), function(id) {
-  t50_boots <- htol_20_cleaned$results[[id]]$T50
-  data.frame(
-    id    = id,
-    T50.mn  = mean(t50_boots, na.rm = TRUE),
-    T50.low = quantile(t50_boots, 0.025, na.rm = TRUE),
-    T50.hi  = quantile(t50_boots, 0.975, na.rm = TRUE)
-  )
-})
-
-# get a warning because some individuals have NA instead of means
-```
+Set January_Pioneer_1, 20 C to NA and do sensitivity analysis. Not reccommended to use t-test after all.
 
 Realized that January_Pioneer_1 was actually one of the two individuals the model failed to calculate T50 for, so removing this plant explicitly does not affect the group mean T50 whatsoever.
 
 ### 500 BOOTS HOT PSIIHT FOR FINAL T50:
 
-Based on findings and conversation with Richard about only one point - that does not affect the mean - could be justified to set to NA, I choose to run the model for T50 hot with all hot Fv/Fm data included.
+Based on findings and only one data point - that does not affect the mean - could be justified to set to NA, I choose to run the model for T50 hot with all available hot Fv/Fm data included.
 
 ```{r}
 #| label: hot 500 boots
@@ -793,11 +664,11 @@ autoplot(ctol) # plots logistic curves and dashed lines for Tcrit, T50, T95
 
 Model only works of run on group level. Even for group level estimates, it is missing T50s for January mature and newly burnt. Entails that these are the most problematic to model. Makes sense when comparing to raw data plots, does not drop low enough to calculate T50. Will try to run model on month x age class subsets to see if that works.
 
-#### Exploratory: Exponantial model
+#### Exploratory: Exponential model
 
 An exponential model could potentially work better based on the shape of the curves for cold data. Does NOT work. Chunk removed. NOTE 21/4: Decided to not move forward with that.
 
-#### Exploratory: Running on month x age_class groups separately to see which ones break
+#### Exploratory: Original model using psiiht running on month x age_class groups separately to see which ones break
 
 ```{r}
 #| label: separate runs for ageclass x month groups
@@ -832,7 +703,7 @@ autoplot(ctol_nov_test)
 
 ```
 
-Age_class (number of successful estimates/total individual plants)
+Age_class (number of successful estimates/total individual plants):
 
 November - Newly Burnt (8/8), Pioneer (7/8), Building (7/8) , Mature ((7/8)need to filter out plant_nr 3 before psiiht) works on individual level
 
@@ -1066,10 +937,6 @@ colSums(is.na(T50_hot))      # see if a lot of NA, there are two NAs
 
 # No values outside the expected range. Two individuals cannot return T50, is NA.
 
-# RICHARD SAID TO ONLY REMOVE IMPOSSIBLE VALUES, SOME VARIATION IS ALWAYS EXPECTED 
-# RICHARD SAID NO NEED TO CHECK FOR NORMALITY AS DATASET IS SMALL, WILL PROBABLY NOT BE NORMAL
-# JUST MOVE ON TO LINEAR MODELS
-
 # visualising prop_succsess vs etimated T50
 T50_hot |>
   filter(!is.na(T50.mn)) |>
@@ -1077,11 +944,13 @@ T50_hot |>
   geom_point() +
   labs(title = "T50 vs bootstrap success rate")
 
-# testing for T50 outliers using z scores, none detected
-T50_hot |>
-  filter(!is.na(T50.mn)) |>
-  mutate(z_score = scale(T50.mn)) |>
-  filter(abs(z_score) > 3)
+# mean prop_success
+mean(T50_hot$prop_success, na.rm = TRUE) # 0.876
+
+#histogram of t50.mn
+hist(T50_hot$T50.mn, breaks = 30)
+#wide spread
+
 ```
 
 All T50 estimates are in the rage between 49.55 C - 55.27 C, this is reasonable. Two individuals returns NA, this is where the model could not fit T50 estimates.
@@ -1107,6 +976,18 @@ T50_hot <- T50_hot |>
   ) |> 
   rename(T50 = T50.mn)|> # rename T50 column
   na.omit() # remove rows with NA
+
+```
+
+#### CI mean and range 
+
+```{r}
+#| label: CI hot
+
+# CI width for each individual 
+T50_hot <- T50_hot |> mutate(ci_width = T50_ci_high - T50_ci_low)
+mean(T50_hot$ci_width, na.rm = TRUE) # 4.137
+range(T50_hot$ci_width, na.rm = TRUE) # 1.11 to 21.88 
 
 ```
 
@@ -1145,14 +1026,16 @@ ggplot(T50_hot_grouped, aes(x = month, y = mean_T50, color = age_class, group = 
 
 Using linear models. T50_hot and T50_cold as response variable for each.
 
-Fixed effects: month and age_class. Random effect: none as each plant is reduced to one T50-value now, the random effect is not needed.
+Predictors: month and age_class. Random effect: none as each plant is reduced to one T50-value now, the random effect is not needed.
 
 Using a two-way ANOVA
 
 Using a model with interaction to take hypothesis 3 into account. No interaction found, comparing interaction model with no-interaction model.
 
+#### Linear model hot
+
 ```{r}
-#| label: hot linear model 
+#| label: hot linear model interaction
 #| message: false
 
 # linear model for T50 with month and age class as fixed effects. 
@@ -1168,6 +1051,12 @@ summary(hot_model_interaction) # look at and report results
 # age class is not significant (p = 0.18) 
 # month:age_class interaction is non-significant (p = 0.68). Hypothesis 3 not supported for hot. 
 # summary: T50 = 51.3 C at refrence level, jan nb
+
+```
+
+```{r}
+#| label: hot linear models comparison
+#| message: false
 
 #EXPLORATORY: 
 # since interaction is not significant, trying model without to see if it is better
@@ -1197,10 +1086,9 @@ Model with interaction: No interaction between month and age_class, hypothesis 3
 
 library(performance)
 check_model(hot_model_interaction)  
-# collionearity is a clear problem here. 
+# collionearity is a problem here. 
 # the interaction term increase variance in parameter estimates, making coefficients less reliable. 
-# better to use the model with no interaction!
-
+# better to use the model with no interaction?
 
 check_model(hot_model)  
 # all panels good; except some slight deviations form whats excpected in influential observations. 
@@ -1209,6 +1097,8 @@ check_model(hot_model)
 ```
 
 Results from performance model check is OK for model WITHOUT interaction. I would opt for that one as it is simpler. Need confirmation if this is ok, or if the interaction model is fine anyway.
+
+Keeping interaction term after discussion.
 
 #### Export model result in a table
 
@@ -1224,7 +1114,7 @@ T50_cold <- read.csv(here("raw_data", "T50_cold_500_boots.csv"))
 ```
 
 ```{r}
-#| label: T50 hot data checking 
+#| label: T50 cold data checking 
 #| message: false
 
 summary(T50_cold)              # global check of all individuals, see if any are very high or low
@@ -1240,16 +1130,27 @@ T50_cold |>
   geom_hline(yintercept = -35, linetype = "dashed", colour = "red") +  # adjust threshold
   labs(title = "T50 vs bootstrap success rate")
 
+
+#histogram of t50.mn
+hist(T50_cold$T50.mn, breaks = 30)
+#wide spread, some estimates far from the rest around - 40C.
+
+#CI width 
+T50_cold$CI_width <- T50_cold$T50.hi - T50_cold$T50.low
+plot(T50_cold$T50.mn, T50_cold$CI_width)
+# wide spread
+
 # testing for T50 outliers using z-scores. one detected, november building 6. 
+# check if there are more appropriate ways to detect outliers, z-scores build on normal distributions!
 T50_cold |>
   filter(!is.na(T50.mn)) |>
   mutate(z_score = scale(T50.mn)) |>
   filter(abs(z_score) > 3) 
 ```
 
-Some individuals have very low estimated T50 (\<-35 C) and also low prop_success. Would be inclined to filter out, as these results are unreliable. Could affect linear model results substantially.
+Some individuals have very low estimated T50 (\<-30 C) and also low prop_success. Would be inclined to filter out, as these results are unreliable. Could affect linear model results substantially.
 
-Z-score over 3 SD for November_Building_6 (T50 = 41C). Would also consider filtering out January_Mature_8 as tolerance deviates almost just as much with T50 = 39 C.
+Z-score over 3 SD for November_Building_6 (T50 = 41C). Would also consider filtering out January_Mature_8 as tolerance deviates almost just as much with T50 = 39 C. Note: November_Mature_2 has very low prop_succes and T50= 30 and CI spanning 15 C, need to consider this.
 
 No individuals have high prop_success though so would have very few individuals left if being strict on this.
 
@@ -1275,13 +1176,32 @@ T50_cold <- T50_cold |>
                                   "Building", "Mature"))) |> 
   # add remarks before filtering
   mutate(remark = case_when(
-    T50 < -35 ~ "; outlier low prop_succes and very low T50 predicted",
+    T50 < -40 ~ "; outlier low prop_succes and very low T50 predicted",
     .default = remark
   )) |>
   # now filter out
-  filter(T50 >= -35) |> # filter out as low prop_success, and very low t50
+  filter(T50 >= -40) |> # filter out as low prop_success, and very low t50
   filter(!is.na(T50))  # only remove rows where T50 itself is NA
   
+# mean prop_ success
+mean(T50_cold$prop_success[T50_cold$month == "November"], na.rm = TRUE) #0.512
+mean(T50_cold$prop_success[T50_cold$month == "January"],  na.rm = TRUE) #0.436 before filtering, 0.453 after
+
+```
+
+#### CI mean and range November
+
+```{r}
+# CI mean and range November 
+
+# filter for November T50 data
+T50_cold_nov <- T50_cold |> filter(month == "November")
+# run model without January, only age class as predictor
+
+# freezing CI November only
+T50_cold_nov <- T50_cold_nov |> mutate(ci_width = T50_ci_high - T50_ci_low)
+mean(T50_cold_nov$ci_width,  na.rm = TRUE) # 7.62
+range(T50_cold_nov$ci_width, na.rm = TRUE) # 0.08 to 33.56
 ```
 
 #### Cold group level visualization plot
@@ -1318,11 +1238,9 @@ ggplot(T50_cold_grouped, aes(x = month, y = mean_T50, color = age_class, group =
 
 #### Statistics - Cold T50 linear model
 
-Not sure how to proceed as there are very few estimates for January T50s. Only 6 individuals accross all of January got a T50. Only January_Pioneer got more than one individual T50, so only one with SD and SE estimation possible.
+Very few estimates for January T50s. Only 6 individuals accross all of January got a T50. Only January_Pioneer got more than one usable individual T50, so only one with SD and SE estimation possible.
 
-Any statistical comparison between months would be very fragile.
-
-Any point of fitting a model across months here with these uncertainties? Alternatively just report January result in table and try to run a model for November alone? Would then not be able to test H1 at all, and only partially test H3.
+Any statistical comparison between months would be very fragile. Report January result in table and run a model for November alone. Would then not be able to formally test H1 at all, and only partially test H3.
 
 UPDATE 24.4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold.
 
@@ -1334,6 +1252,7 @@ UPDATE 24.4: Confirmed that as we can not calculate viable T50 estimates for Jan
 T50_cold_nov <- T50_cold |> filter(month == "November")
 # run model without January, only age class as predictor
 
+# linear model
 cold_model <- lm(T50 ~ age_class, data = T50_cold_nov)
 anova(cold_model) # can use anova or car::Anova, both works here  
 summary(cold_model) # significance of cintercept in summary rarely interesting
@@ -1354,6 +1273,101 @@ check_model(cold_model)
 ```
 
 #### Export model result in a table?
+
+## FIGURES AND TABLES
+
+```{r}
+#| label: table of prop_success and T50 yield
+#| message: false
+
+library(dplyr)
+library(gt)
+
+# make combined table
+
+table_combined <- bind_rows(
+  T50_hot  |>
+    group_by(age_class, month) |>
+    summarise(
+      n_attempted       = n(),
+      n_with_T50        = sum(!is.na(T50)),
+      mean_prop_success = round(mean(prop_success, na.rm = TRUE), 2),
+      .groups = "drop"
+    ) |>
+    mutate(tolerance = "Heat tolerance"),
+  
+  T50_cold |>
+    group_by(age_class, month) |>
+    summarise(
+      n_attempted       = n(),
+      n_with_T50        = sum(!is.na(T50)),
+      mean_prop_success = round(mean(prop_success, na.rm = TRUE), 2),
+      .groups = "drop"
+    ) |>
+    mutate(tolerance = "Freezing tolerance")
+  
+  ) |>
+  mutate(
+    tolerance = factor(
+      tolerance,
+      levels = c("Heat tolerance", "Freezing tolerance")
+    )
+  ) |>
+  
+  arrange(tolerance, age_class, month) |>
+  mutate(tolerance = as.character(tolerance)) |>
+  select(tolerance, age_class, month,
+         n_attempted, n_with_T50, mean_prop_success)
+
+# format as gt table 
+
+gt_table_yield <- table_combined |>
+  gt(groupname_col = "tolerance") |>          # group rows by tolerance type
+  cols_label(
+    age_class         = "Age class",
+    month             = "Month",
+    n_attempted       = "n attempted",
+    n_with_T50        = "n with T50",
+    mean_prop_success = "Mean prop. success"
+  ) |>
+  tab_header(
+    title   = "Table 1",
+    subtitle = "Bootstrap sample yield and mean success rate per tolerance type, age class, and month"
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_row_groups()
+  ) |>
+  cols_align(align = "left",   columns = c(age_class, month)) |>
+  cols_align(align = "center", columns = c(n_attempted, n_with_T50,
+                                           mean_prop_success)) |>
+  opt_table_font(font = "Calibri") |>  
+  opt_stylize(style = 1, color = "gray") |>    # clean academic style
+  tab_options(
+    table.border.top.width    = px(2),
+    table.border.bottom.width = px(2),
+    column_labels.border.bottom.width = px(1)
+  )
+
+# print 
+gt_table_yield
+
+# export to Word 
+gt_table_yield |> gtsave(here("output", "T50_yield_table.docx"))
+```
+
+```{r}
+#| label: table of mean T50 estimates per group
+#| message: false
+
+
+
+
+```
 
 ### CORRELATION HEAT VS FREEZING TOLERANCE
 
@@ -1436,12 +1450,9 @@ ggsave(
 
 ```
 
-correlation plot with trend lines for each age class
+Correlation plot with trend lines for each age class
 
 ```{r}
-
-
-
 
 # Define a colour palette for age classes
 age_colours <- c(
@@ -1450,7 +1461,6 @@ age_colours <- c(
   "Building"    = "#56B4E9",   # sky blue
   "Mature"      = "#009E73"    # teal green
 )
-
 
 
 ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
@@ -1524,6 +1534,42 @@ ggsave(
 )
 ```
 
+Coefficient table
+
+```{r}
+
+# Spearman correlations: per age-class + overall table
+library(broom)
+
+spearman_by_age <- df_joined |>  
+  group_by(age_class) |>    # group by age class
+  summarise(
+    tidy(cor.test(T50_hot, T50_cold, method = "spearman")),
+    n = n(),
+    .groups = "drop"
+  ) |> 
+  select(age_class, n, estimate, p.value)
+
+spearman_results <- bind_rows(
+  spearman_by_age,
+  tidy(cor_spearman) |> 
+    mutate(age_class = "Overall",
+           n         = nrow(df_joined)) |> 
+    select(age_class, n, estimate, p.value)
+) |> 
+  mutate(
+    significance = case_when(
+      p.value < 0.001 ~ "***",
+      p.value < 0.01  ~ "**",
+      p.value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    ),
+    across(c(estimate, p.value), ~ round(., 3))
+  )
+
+print(spearman_results)
+```
+
 #### Plot response curves and T50 for EGU and thesis
 
 #### HOT
@@ -1593,111 +1639,12 @@ t50_points <- purrr::map_dfr(names(htol_500_boots$results), function(id) {
   group_by(month, age_class, mean_T50, low_T50, hi_T50) |>
   slice_min(abs(temperature - mean_T50)) |>
   ungroup()
-
-
-
 ```
 
-```{r}
-#| label: hot plot curve t50 faceted by age class
-#| message: false
-# PLOT
-
-ggplot(group_curves, aes(x = temperature, y = mean_pred,
-                          linetype = month, colour = month)) +
-
-  geom_line(linewidth = 0.9) +
-
-  # solid November, dashed January
-  scale_linetype_manual(values = c("November" = "solid",
-                                   "January"  = "solid")) +
-  scale_colour_manual(values = c("November" = "#7B2D8B",   # dark purple
-                                "January"  = "#C589D8")) + # light purple
-
-    # Horizontal error bar showing 95% CI along x-axis
-  geom_errorbarh(data = t50_points,
-                 aes(y      = mean_pred,
-                     xmin   = low_T50,
-                     xmax   = hi_T50,
-                     colour = month),
-                 height = 0.02, linewidth = 0.6,
-                 show.legend = FALSE) +
-
-  # T50 point — now mapped to shape so it appears in legend
-  geom_point(data = t50_points,
-             aes(x = mean_T50, y = mean_pred,
-                 colour = month, shape = "T50"),
-             size = 3.5, show.legend = TRUE) +
-  
-
-  # Dotted vertical drop line to x-axis
-  geom_segment(data = t50_points,
-               aes(x      = mean_T50, xend = mean_T50,
-                   y      = 0,        yend = mean_pred,
-                   colour = month),
-               linetype = "dotted", linewidth = 0.4,
-               show.legend = FALSE) +
-  
-  # label on T50 pionts
-  geom_text(data = t50_points,
-            aes(x      = mean_T50,
-                y      = mean_pred,
-             label = paste0(ifelse(month == "November", "Nov", "Jan"),
-               ", ", round(mean_T50, 1), "C"),
-                colour = month),
-            vjust       = ifelse(t50_points$month == "November", 2, -2),
-            hjust       = ifelse(t50_points$month == "November", 1.2, 0.1),
-            size        = 2.5,
-            fontface    = "bold",
-            show.legend = FALSE) +
-
-  # 2x2 facet grid in correct positions:
-  # top-left = Newly Burnt, top-right = Pioneer
-  # bottom-left = Building, bottom-right = Mature
-  facet_wrap(~ age_class,
-             ncol = 2,
-             nrow = 2) +
-
-  labs(
-    title    = "Heat tolerance",                             
-    x        = "Temperature (C)",
-    y        = "Fv/Fm",
-    linetype = NULL,
-    colour   = NULL,
-    shape    = NULL
-  ) +
-
-  scale_y_continuous(limits = c(0, 0.9)) +
-  
-   # Tidy up the legend so lines and point appear cleanly
-  guides(
-    colour   = guide_legend(override.aes = list(shape = NA)),
-    shape    = guide_legend(override.aes = list(colour = "grey30",
-                                                linetype = "blank"))
-  ) +
-  
-  theme_bw() +
-  theme(
-    strip.background = element_rect(fill = "grey90"),
-    strip.text       = element_text(face = "bold"),
-    legend.position  = "bottom",
-    panel.grid.minor = element_blank()
-  )
-
-
-# save fig to output folder 
-ggsave(
-  here("output", "T50_hot_group_curves_age_class.png"),
-  width  = 8,
-  height = 6,
-  dpi    = 300
-)
-```
-
-raw data plotted
+Plot
 
 ```{r}
-#| label: hot plot curve t50 faceted by age class
+#| label: hot curve t50 faceted by age class w raw data
 #| message: false
 # PLOT
 
@@ -1772,15 +1719,15 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
   # top-left = Newly Burnt, top-right = Pioneer
   # bottom-left = Building, bottom-right = Mature
   facet_wrap(~ age_class,
-             ncol = 1,
-             nrow = 4) +
+             ncol = 2,
+             nrow = 2) +
 
   labs(
     title    = "Heat response",
     x        = "Temperature (\u00b0C)",
     y        = "Fv/Fm",
-    colour   = "Season:",                                        # CHANGED
-    linetype = "Season:",                                        # CHANGED
+    colour   = "Season, month:",                                        # CHANGED
+    linetype = "Season, month:",                                        # CHANGED
     shape    = NULL
   ) +
 
@@ -1806,21 +1753,20 @@ ggplot(group_curves, aes(x = temperature, y = mean_pred,
 
 # save fig to output folder 
 ggsave(
-  here("output", "T50_hot_group_curves_age_class_labels_WIDE_.png"),
-  width  = 6,
-  height = 10,
+  here("output", "T50_hot_thesis.png"),
+  width  = 10,
+  height = 8,
   dpi    = 300
 )
 ```
 
 #### COLD
 
-As January estimates for freezing T50 are very few, do not plot the graphs for J an freezing. Only plott the reliable results, so from November
+As January estimates for freezing T50 are very few and unrelaiable, will not plot the graphs for January. Only November here
 
 ```{r}
 #| label: cold preparing curves and T50 mean
 #| message: false
-
 
 # EXTRACT PREDICTED CURVES FROM EACH MODEL OBJECT 
 
@@ -1904,6 +1850,8 @@ cold_t50_points <- cold_t50_raw |>
 
 ```
 
+Plot
+
 ```{r}
 #| label: cold plot curve t50 faceted by age class
 #| message: false
@@ -1938,9 +1886,9 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   # T50 points
   geom_point(data = cold_t50_points,
              aes(x = mean_T50, y = mean_pred,
-                 colour = month, shape = "T50"),
+                 colour = month, shape = "T50, 50% of Fv/Fm at control temp"),
              size = 3.5, show.legend = TRUE) +
-
+  
   # Dotted vertical drop line
   geom_segment(data = cold_t50_points,
                aes(x = mean_T50, xend = mean_T50,
@@ -1967,8 +1915,9 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
             fontface = "bold",
             show.legend = FALSE) +
 
-  scale_shape_manual(values = c("T50" = 16)) +
-  facet_wrap(~ age_class, ncol = 1, nrow = 4) +
+  scale_shape_manual(
+  values = c("T50, 50% of Fv/Fm at control temp" = 16)) + 
+  facet_wrap(~ age_class, ncol = 2, nrow = 2) +
 
   labs(
     title    = "Freezing response",         
@@ -1980,7 +1929,7 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   ) +
 
   scale_y_continuous(limits = c(0, 0.9)) +
-  coord_cartesian(xlim = c(-35, 5)) +
+  coord_cartesian(xlim = c(-30, 5)) +
 
   guides(
     colour = guide_legend(override.aes = list(shape    = NA)),
@@ -1999,9 +1948,9 @@ ggplot(cold_group_curves, aes(x = temperature, y = mean_pred,
   )
 
 ggsave(
-  here("output", "T50_cold_group_curves_only_nov_vertical_LAST_.png"),
-  width = 5,
-  height = 10,
+  here("output", "T50_cold_thesis.png"),
+  width = 10,
+  height = 7,
   dpi = 300
 )
 ```

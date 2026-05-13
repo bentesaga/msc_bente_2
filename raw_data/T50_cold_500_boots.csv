@@ -1,65 +1,65 @@
-"id","prop_success","T50.mn","remark"
-"January_Building_1",NA,NA,"filtered out before psiiht run to not break function"
-"January_Building_2",NA,NA,"filtered out before psiiht run to not break function"
-"January_Building_3",NA,NA,"filtered out before psiiht run to not break function"
-"January_Building_4",0.612,-20.2281699250508,NA
-"January_Building_5",NA,NA,"filtered out before psiiht run to not break function"
-"January_Building_6",NA,NA,"filtered out before psiiht run to not break function"
-"January_Building_7",NA,NA,"filtered out before psiiht run to not break function"
-"January_Building_8",NA,NA,"filtered out before psiiht run to not break function"
-"January_Mature_1",0.244,-32.3199907603851,NA
-"January_Mature_2",NA,NA,"psiiht convergence failure"
-"January_Mature_3",NA,NA,"psiiht convergence failure"
-"January_Mature_4",NA,NA,"filtered out before psiiht run to not break function"
-"January_Mature_5",NA,NA,"psiiht convergence failure"
-"January_Mature_6",NA,NA,"psiiht convergence failure"
-"January_Mature_7",NA,NA,"psiiht convergence failure"
-"January_Mature_8",0.34,-39.6786481067214,NA
-"January_Newly Burnt_1",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_2",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_3",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_4",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_5",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_6",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_7",NA,NA,"filtered out before psiiht run to not break function"
-"January_Newly Burnt_8",NA,NA,"filtered out before psiiht run to not break function"
-"January_Pioneer_1",NA,NA,"filtered out before psiiht run to not break function"
-"January_Pioneer_2",NA,NA,"filtered out before psiiht run to not break function"
-"January_Pioneer_3",NA,NA,"filtered out before psiiht run to not break function"
-"January_Pioneer_4",NA,NA,"filtered out before psiiht run to not break function"
-"January_Pioneer_5",NA,NA,"filtered out before psiiht run to not break function"
-"January_Pioneer_6",0.674,-28.0680978879252,NA
-"January_Pioneer_7",0.558,-26.9209221085334,NA
-"January_Pioneer_8",0.23,-20.4888166224192,NA
-"November_Building_1",0.66,-21.0672435669743,NA
-"November_Building_2",0.472,-16.8150224090052,NA
-"November_Building_3",NA,NA,"psiiht convergence failure"
-"November_Building_4",0.252,-19.7885973554765,NA
-"November_Building_5",0.626,-17.5830943204225,NA
-"November_Building_6",0.336,-41.2325859954383,NA
-"November_Building_7",0.608,-24.6375768541816,NA
-"November_Building_8",0.644,-18.9826945504924,NA
-"November_Mature_1",0.662,-19.6989502692646,NA
-"November_Mature_2",0.338,-29.7175752050769,NA
-"November_Mature_3",NA,NA,"filtered out before psiiht run to not break function"
-"November_Mature_4",0.364,-17.2039803467735,NA
-"November_Mature_5",0.522,-24.1068829106402,NA
-"November_Mature_6",0.63,-16.0205299717354,NA
-"November_Mature_7",0.65,-21.9089463984139,NA
-"November_Mature_8",0.41,-27.3543962944494,NA
-"November_Newly Burnt_1",0.662,-18.4235067652751,NA
-"November_Newly Burnt_2",0.388,-13.8434747409577,NA
-"November_Newly Burnt_3",0.534,-18.9368348523111,NA
-"November_Newly Burnt_4",0.53,-17.1882235357719,NA
-"November_Newly Burnt_5",0.628,-17.4688004341303,NA
-"November_Newly Burnt_6",0.438,-21.9066448347252,NA
-"November_Newly Burnt_7",0.634,-23.8843101761498,NA
-"November_Newly Burnt_8",0.69,-16.5800703377417,NA
-"November_Pioneer_1",0.578,-16.1598432485694,NA
-"November_Pioneer_2",0.37,-23.8064357565469,NA
-"November_Pioneer_3",NA,NA,"psiiht convergence failure"
-"November_Pioneer_4",0.11,-24.0192784287615,NA
-"November_Pioneer_5",0.458,-20.533301440768,NA
-"November_Pioneer_6",0.63,-14.6165251268161,NA
-"November_Pioneer_7",0.404,-18.4038944491168,NA
-"November_Pioneer_8",0.644,-18.8114644659716,NA
+"id","prop_success","T50.mn","T50_ci_low","T50_ci_median","T50_ci_high","remark"
+"January_Building_1",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_2",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_3",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_4",0.6,-20.2541185691722,-27.2404932505958,-19.4622382111706,-18.8893758707566,NA
+"January_Building_5",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_6",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_7",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Building_8",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Mature_1",0.248,-32.6298472337118,-55.6122242455297,-28.3936694071037,-22.1710803426273,NA
+"January_Mature_2",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"January_Mature_3",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"January_Mature_4",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Mature_5",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"January_Mature_6",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"January_Mature_7",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"January_Mature_8",0.352,-40.6207273697583,-68.1462494487876,-42.8441002962334,-16.5991395595089,NA
+"January_Newly Burnt_1",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_2",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_3",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_4",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_5",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_6",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_7",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Newly Burnt_8",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_1",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_2",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_3",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_4",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_5",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"January_Pioneer_6",0.656,-27.775302271899,-80.404786320781,-20.8092791826192,-20.6930439093699,NA
+"January_Pioneer_7",0.556,-26.7868697166691,-44.5790610614032,-25.9461821960964,-20.195154083969,NA
+"January_Pioneer_8",0.206,-20.488909052184,-20.5919483516407,-20.5006642513865,-20.3423479989882,NA
+"November_Building_1",0.646,-21.1069486035008,-21.3843757036778,-21.3140550621194,-20.0455208067691,NA
+"November_Building_2",0.432,-16.6258793873374,-19.551032236525,-17.1019538000118,-13.9354386135095,NA
+"November_Building_3",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"November_Building_4",0.26,-19.7891224354635,-19.8364984644245,-19.8027351667421,-19.7486219339579,NA
+"November_Building_5",0.562,-17.6199131077397,-19.1864373744887,-17.4847424529016,-16.8582308502933,NA
+"November_Building_6",0.342,-41.4368159342819,-63.9832337071008,-38.7691582605796,-31.8730746077552,NA
+"November_Building_7",0.63,-25.1568761213525,-42.7557563400002,-21.9974851448973,-21.716896341705,NA
+"November_Building_8",0.656,-19.3628502913998,-24.1884152963291,-18.1244591393151,-17.1595859722487,NA
+"November_Mature_1",0.67,-19.7751012214405,-21.533980846484,-20.0583189364012,-17.4183844483681,NA
+"November_Mature_2",0.282,-30.2010682736468,-48.9421680366565,-30.8444212420487,-15.3823079659911,NA
+"November_Mature_3",NA,NA,NA,NA,NA,"filtered out before psiiht run to not break function"
+"November_Mature_4",0.324,-17.208315303405,-17.3129073298447,-17.2049323160538,-17.1510749306469,NA
+"November_Mature_5",0.502,-24.1430735195582,-25.6741135176471,-24.6981691829816,-18.085087761812,NA
+"November_Mature_6",0.65,-16.0048140750858,-16.8722485232118,-15.8972160777965,-15.5478702910036,NA
+"November_Mature_7",0.664,-21.8905640226508,-26.665101800395,-22.9083502194409,-16.3379942276798,NA
+"November_Mature_8",0.426,-27.7115183784707,-49.2501044815566,-27.7263242302216,-17.0771110409536,NA
+"November_Newly Burnt_1",0.64,-18.4894201613813,-19.0520045771001,-18.6944936111198,-17.1116188581485,NA
+"November_Newly Burnt_2",0.362,-13.8478165780076,-14.7327071447201,-14.0289897438569,-11.9454587955799,NA
+"November_Newly Burnt_3",0.452,-19.0745404697735,-22.1638587316419,-19.8855873405913,-14.7163805308728,NA
+"November_Newly Burnt_4",0.508,-17.1262218857082,-18.6217802141195,-17.1611131817208,-15.4585694218986,NA
+"November_Newly Burnt_5",0.644,-17.3784517692619,-19.9374041011577,-17.8378661485029,-14.757109849276,NA
+"November_Newly Burnt_6",0.458,-21.7869762172464,-35.1991262710167,-20.5229193322028,-20.5055702634372,NA
+"November_Newly Burnt_7",0.656,-23.4688920156701,-31.9118027735,-24.8135937632033,-16.489587730654,NA
+"November_Newly Burnt_8",0.656,-16.5697264696298,-17.1033850066642,-16.5579679564931,-15.9569051649308,NA
+"November_Pioneer_1",0.586,-16.1596355437047,-16.362372669296,-16.1672144923728,-15.9164008326581,NA
+"November_Pioneer_2",0.32,-23.7699592851619,-27.4990542187414,-23.5603899628725,-21.6043435447041,NA
+"November_Pioneer_3",NA,NA,NA,NA,NA,"psiiht convergence failure"
+"November_Pioneer_4",0.114,-23.9980716412632,-24.3490329180671,-23.9836401200209,-23.507490761043,NA
+"November_Pioneer_5",0.452,-20.4380759562349,-24.5329553517694,-20.7871844037542,-15.0221067170541,NA
+"November_Pioneer_6",0.664,-14.6042954337249,-16.3609072277142,-14.3385112466538,-13.6439058272295,NA
+"November_Pioneer_7",0.468,-18.4631057572424,-24.1843880030922,-18.4792441366999,-13.5018185006047,NA
+"November_Pioneer_8",0.656,-19.0053895988087,-22.5733519112708,-18.3287681855856,-17.4977000841733,NA
