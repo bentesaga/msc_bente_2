@@ -14,12 +14,12 @@ library(tidyverse)
 library(here)
 library(ggplot2)
 library(reshape2)
-
+library(broom)
 ```
 
 ## Data import
 
-HAVE TO INCLUDE DRY WWTIGHT AND TOP HEIGHT AS WELL
+Only include dry weight and hieght if time.
 
 ```{r}
 #| label: data import 
@@ -29,15 +29,16 @@ HAVE TO INCLUDE DRY WWTIGHT AND TOP HEIGHT AS WELL
 trait_data <- read.csv(here("clean_data", "DURIN_Clean_Seasonal_Thermal_Tolerance_Bente_Msc.csv")) |>
   dplyr::filter(proj_2025 == "Traits") |>
   dplyr::select(proj_2025, month, age_class, plant_nr, 
-                                remark, leaf_thickness_mean, sla, ldmc) |> 
-  dplyr::mutate(id = paste(month, age_class, plant_nr, sep = "_"))
+                                remark, leaf_thickness_mean, dry_mass_g, height_s_top, sla, ldmc) |> 
+  dplyr::mutate(id = paste(month, age_class, plant_nr, sep = "_")) |> 
+  dplyr::filter(!str_detect(remark, regex("outlier", ignore_case = TRUE))) # filter out flagged outliers
 
-# implort hot T50 data
+# import hot T50 data
 T50_hot_data <- read.csv(here("raw_data", "T50_hot_500_boots.csv")) |> 
    rename(T50 = T50.mn)  # rename T50 column
 
 
-# implort hot T50 data
+# import hot T50 data
 T50_cold_data <- read.csv(here("raw_data", "T50_cold_500_boots.csv")) |> 
    rename(T50 = T50.mn)  # rename T50 column
 
@@ -52,13 +53,15 @@ More for practice of the workflow. Was testing my alternative hypothesis nr 2, b
 #| message: false
 
 # make trait object
-traits <- c("leaf_thickness_mean", "sla", "ldmc")
+traits <- c("dry_mass_g", "leaf_thickness_mean", "sla", "ldmc", "height_s_top")
  
 # tidy labels for facet strips
 trait_labels <- c(
+  dry_mass_g          = "Leaf Dry Mass (g)",
   leaf_thickness_mean = "Leaf Thickness (mm)",
   sla                 = "SLA (cm/g)",
-  ldmc                = "LDMC (mg/g)"
+  ldmc                = "LDMC (mg/g)",
+  height_s_top        = "Plant Height (cm)"
 )
  
 df_traits <- trait_data |>
@@ -76,12 +79,16 @@ df_traits <- trait_data |>
 summary_table <- df_traits |>
   group_by(age_class, month) |>
   summarise(
+    drymass_mean   = round(mean(dry_mass_g, na.rm = TRUE), 4),
+    drymass_sd     = round(sd(dry_mass_g,   na.rm = TRUE), 4),
     thickness_mean = round(mean(leaf_thickness_mean, na.rm = TRUE), 4),
     thickness_sd   = round(sd(leaf_thickness_mean,   na.rm = TRUE), 4),
     sla_mean       = round(mean(sla,                 na.rm = TRUE), 4),
     sla_sd         = round(sd(sla,                   na.rm = TRUE), 4),
     ldmc_mean      = round(mean(ldmc,                na.rm = TRUE), 4),
     ldmc_sd        = round(sd(ldmc,                  na.rm = TRUE), 4),
+    height_mean    = round(mean(height_s_top, na.rm = TRUE), 4),
+    height_sd      = round(sd(height_s_top,   na.rm = TRUE), 4),
     n              = n(),
     .groups = "drop"
   )
@@ -143,13 +150,13 @@ traits_plotted <- ggplot(df_long,
              ncol     = 3) +
  
   # colour
-  scale_fill_manual(  values = c("November" = "#E07B4F", "January" = "#4E9EC2")) +
-  scale_colour_manual(values = c("November" = "#E07B4F", "January" = "#4E9EC2")) +
+  scale_fill_manual(  values = c("November" = "#7B2D8B", "January" = "#C589D8")) +
+  scale_colour_manual(values = c("November" = "#7B2D8B", "January" = "#C589D8")) +
  
   # labels
   labs(
-    title  = "Leaf Trait Measurements by Age Class and Month",
-    x      = "Age Class",
+    title  = "Trait measurements by growth phase and month",
+    x      = "Growth phase",
     y      = "Trait Value",
     fill   = "Month",
     colour = "Month"
@@ -159,14 +166,20 @@ traits_plotted <- ggplot(df_long,
   theme(
     strip.background = element_rect(fill = "grey92", colour = "grey60"),
     strip.text       = element_text(face = "bold", size = 10),
-    legend.position  = "top",
+    legend.position  = "bottom",
     panel.grid.minor = element_blank(),
     axis.text.x      = element_text(angle = 30, hjust = 1)
   )
 
 print(traits_plotted) # must be run in the console
 
-# add ggsave when happy
+# save fig to output folder 
+ggsave(
+  here("output", "raw_trait_plot.png"),
+  width  = 10,
+  height = 8,
+  dpi    = 300
+)
  
 ```
 
@@ -185,12 +198,14 @@ trait_data_means <- trait_data |>
     leaf_thickness_mean = mean(leaf_thickness_mean, na.rm = TRUE),
     sla = mean(sla, na.rm = TRUE),
     ldmc = mean(ldmc, na.rm = TRUE),
+    dry_mass_g = mean(dry_mass_g, na.rm = TRUE),
+    height_s_top = unique(height_s_top), # does not need averaging like the other traits 
     .groups = "drop"
   )
 
 ```
 
-## Correlation matrix between traits
+### Correlation matrix between traits
 
 Only problematic if correlation is above 0.7-0.9.
 
@@ -200,25 +215,102 @@ Only problematic if correlation is above 0.7-0.9.
 
 # correlation matrix NOT taking month into account 
 trait_cor <- trait_data_means |>
-  dplyr::select(leaf_thickness_mean, sla, ldmc) |>
+  dplyr::select(leaf_thickness_mean, sla, ldmc, dry_mass_g, height_s_top) |>
   cor(use = "complete.obs")
 
-trait_cor # all within +/- 0.7 so no problematic correlations for lm model later
+trait_cor # added height and dry mass, now a strong negative correlation between sla and height, -0.79
+# exceeds +/- 0.7 so could potentially be problematic correlations for lm model later
+# would then be related to collinearity, check VIF in diagnostics
+
+
 
 #correlation matrix taking month into account
 trait_cor_by_month <- trait_data_means |>
-  dplyr::group_by(month) |>
-  dplyr::group_map(~ {
+  dplyr::group_split(month) |>
+  setNames(unique(trait_data_means$month)) |>
+  lapply(function(df) {
     cor(
-      dplyr::select(.x, leaf_thickness_mean, sla, ldmc),
+      df |> dplyr::select(leaf_thickness_mean, sla, ldmc, dry_mass_g, height_s_top),
       use = "complete.obs"
     )
   })
 
-trait_cor_by_month #  all within +/- 0.7 so no problematic correlations for lm model later
-# sla and ldmc moderately negatively correlated around -0.6, as expected 
+trait_cor_by_month #  added height and dry mass
+# also here strong relashionship between sla and height, both months similar -0.8, -0.84 
+# so taller plants = conservative leaves, shorter plants aquisitive leaves, LES
+# sla and ldmc moderately negatively correlated around -0.6, as expected in LES.
+# LDMC and height moderate positive correlation, taller plants have more conservative leaves
+# sla vs dry mass show opposite patterns in nov and jan
 
 ```
+
+Traits are not uncorrelated, several relationships detected in line with LES and plant strategy theory.
+
+High correlation between SLA and height, I choose to keep SLA, as I have more litterature on this relationship with T50.
+
+```{r}
+#| label: correlation plot figure   
+#| message: false
+library(corrplot)
+
+names(trait_cor_by_month) <- c("January", "November")
+
+#simple
+cor_plot_nov <- corrplot(trait_cor_by_month$November)
+cor_plot_jan <- corrplot(trait_cor_by_month$January)
+
+# recode trait names for nicer labels 
+trait_labels <- c(
+  leaf_thickness_mean = "Leaf Thickness",
+  sla                 = "SLA ",
+  ldmc                = "LDMC",
+  dry_mass_g          = "Dry Mass",
+  height_s_top        = "Height"
+)
+relabel <- function(mat) {
+  idx <- match(rownames(mat), names(trait_labels))
+  rownames(mat) <- colnames(mat) <- trait_labels[idx]
+  mat
+}
+
+
+# better plots for thesis
+
+png("trait_cor_nov_jan.png", width = 1200, height = 550, res = 120)
+
+par(mfrow = c(1, 2))
+
+corrplot(relabel(trait_cor_by_month$November),
+         method      = "circle",
+         order       = "AOE",
+         diag        = TRUE,
+         tl.col      = "black",
+         addCoef.col = "black",
+         number.cex  = 0.8,
+         col         = colorRampPalette(c("#67001F", "#FFFFFF", "#4575B4"))(10),
+         title       = "November",
+         mar         = c(0, 0, 2, 0))
+
+corrplot(relabel(trait_cor_by_month$January),
+         method      = "circle",
+         order       = "AOE",
+         diag        = TRUE,
+         tl.col      = "black",
+         addCoef.col = "black",
+         number.cex  = 0.8,
+         col         = colorRampPalette(c("#67001F", "#FFFFFF", "#4575B4"))(10),
+         title       = "January",
+         mar         = c(0, 0, 2, 0))
+
+dev.off()
+
+# ggsave does not work, corrplot not in ggplot
+# reorder traits if time
+```
+
+#### Standardising traits
+
+Standardizing units, z-scores by (x - mean(x)) / sd (x). Gives mean = 0 and SD = 1 for each trait. To make coeficcients in model output direclty comparable, so answer which trait has the strongest effect on T50. Will not use this approach after all.
 
 ## HOT
 
@@ -228,7 +320,7 @@ trait_cor_by_month #  all within +/- 0.7 so no problematic correlations for lm m
 #| label: joining data frames   
 #| message: false
 
-# joining tarit means data frame with T50 hot dataframe by id column
+# joining trait means data frame with T50 hot dataframe by id column
 trait_T50_hot <- trait_data_means |>
   dplyr::left_join(T50_hot_data, by = "id") |> 
    mutate(month = factor(month, levels = c("November", "January"))) |> 
@@ -239,7 +331,7 @@ trait_T50_hot <- trait_data_means |>
 
 ```
 
-## Exploratory plots: T50 hot against each trait
+## Exploratory plots: T50 hot against each trait raw value
 
 ```{r}
 #| label: exploratory plots    
@@ -287,38 +379,50 @@ ldmc_vs_T50_hot
 # when NOT faceted by month: decrease in T50 hot with increased ldmc, not expected
 # when faceted by month: Janury increased ldmc relate to decreased T50, not expected. November increased ldmc relate to slight increase in T50. 
 
+# dry mass vs T50 hot
+drymass_vs_T50_hot <- ggplot(trait_T50_hot, aes(x = dry_mass_g, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "Dry mass (g)", y = "T50") +
+  theme_minimal()
+
+drymass_vs_T50_hot
+# nov slight negative trend, jan positive trend
+
+height_vs_T50_hot <- ggplot(trait_T50_hot, aes(x = height_s_top, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "Plant height", y = "T50") +
+  theme_minimal()
+
+height_vs_T50_hot
+# slightly negative trend with increasing height 
 ```
 
 ## Linear model for traits vs T50 hot
-
-Checking if traits correlate with T50 **independent** of time and age class.
-
-```{r}
-
-```
 
 ```{r}
 #| label: linear model   
 #| message: false
 
-# Test each trait separately. Know that age class have no effect on t50. 
-lm_sla <- lm(T50 ~ sla + month, data = trait_T50_hot)
-summary(lm_sla)
-lm_thickness <- lm(T50 ~ leaf_thickness_mean + month, data = trait_T50_hot)
-summary(lm_thickness)
-lm_ldmc <- lm(T50 ~ ldmc + month, data = trait_T50_hot)
-summary(lm_ldmc)
-# trait not significant in any of these. 
-
-# linear model for T50 response to traits, no interactions included
-lm_traits_T50_hot <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class, data = trait_T50_hot) 
-
+# linear model for T50 response to standardised trait values, no interactions included
+lm_traits_T50_hot <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + dry_mass_g + month + age_class, data = trait_T50_hot) 
 anova(lm_traits_T50_hot) #look at and report results
-
-
 summary(lm_traits_T50_hot) # look at and report results
-
 # summed up: thickness, ldmc, month significant predictors
+
+
+# USE THIS: linear interaction model for T50 response to standardised trait values, no interactions included
+lm_int_traits_T50_hot <- lm(T50 ~ (sla + leaf_thickness_mean + ldmc + dry_mass_g) * month * age_class , data = trait_T50_hot) 
+
+car::Anova(lm_int_traits_T50_hot, type = "III") # order does not matter 
+summary(lm_int_traits_T50_hot)
+
+
+AIC(lm_traits_T50_hot, lm_int_traits_T50_hot) #
+# AIC favours interaction model
 ```
 
 ## Checking model performance
@@ -328,88 +432,30 @@ summary(lm_traits_T50_hot) # look at and report results
 #| message: false
 
 library(performance)
-check_model(lm_traits_T50_hot)  
-
-# all panels look good
-# especially important to note: was concerned about month possibly masking effects of traits, but based on relatively low collinearity this should not be a problem, but worth commenting on
-# model hold as is
+check_model(lm_int_traits_T50_hot)
+# interaction model has high VIF for all terms, can inflate parameter uncertainty. Can still use the model. 
 ```
 
-NOTE/QUESTION: Despite the model diagnostics looking good, the plots of traits vs T50 faceted by month show relationships in opposite directions. Is this reason to worry? Need to investigate.
-
-## Model comparisons - with/without interactions
-
 ```{r}
-#| label: comparing models
+#| label: effect size plot   
 #| message: false
 
-# checking if adding interctions makes the model better
-# month interaction taken into account for all traits
-lm_T50_interactions <- lm(
-  T50 ~ (sla + leaf_thickness_mean + ldmc) * month + age_class,
-  data = trait_T50_hot
-)
-summary(lm_T50_interactions)
-
-model_main <- lm(
-  T50 ~ sla + leaf_thickness_mean + ldmc + month + age_class,
-  data = trait_T50_hot
-)
-
-anova(model_main, lm_T50_interactions) # p-value above 0.05, not significant. Not useful to take interactions for all traits into account. 
-
-# only interaction for thickness * month
-lm_thick_int <- lm(
-  T50 ~ leaf_thickness_mean * month + sla + ldmc + age_class,
-  data = trait_T50_hot
-)
-
-anova(model_main, lm_thick_int) # p-value above 0.05, not significant. Not useful to take interactions for all traits into account. 
-
-# only interaction for sla * month
-lm_sla_int <- lm(
-  T50 ~ sla * month + leaf_thickness_mean + ldmc + age_class,
-  data = trait_T50_hot
-)
-
-anova(model_main, lm_sla_int) # p-value above 0.05, not significant. Not useful to take interactions for all traits into account. 
-
-# only interaction for ldmc * month
-lm_ldmc_int <- lm(
-  T50 ~ ldmc * month + sla + leaf_thickness_mean + age_class,
-  data = trait_T50_hot
-)
-
-anova(model_main, lm_ldmc_int) # p-value under 0.05, significant, barely. Adding an interaction term here makes the model better.
-# should consider including the interaction in the main model. 
-
-check_model(lm_ldmc_int) # high collinearity, may inflate uncertanty. 
-#preformance better if model without interaction
-
-AIC(lm_traits_T50_hot, lm_ldmc_int) # slightly better for the interaction included
-
-# month * ldmc model might be a good choice, richard agrees. better 197AIC compared to 200 for no interaction model. 
-
-# colud potentially leaf thickness out entirely, if i dont trust the data. 
-
-# do not test interactions between traits, only limits degree of freedom
+# maybe not a good option any more if not standardizing predictors
 ```
-
-Also tested PCA, traits not correlated enough to be collapsed into one single axis. Better to keep lm approach, anova type I? interction or not? Remember to comment on VIF for sla, although it is not high enough to invalidate the model.
-
-## Export model output
 
 ```{r}
+#| label: model coefficient table    
+#| message: false
 
+tidy(lm_int_traits_T50_hot, conf.int = TRUE) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  select(term, estimate, conf.low, conf.high, statistic, p.value) |>
+  gt() |>
+  cols_label(term = "Term", estimate = "Estimate",
+             conf.low = "95% CI Low", conf.high = "95% CI High",
+             statistic = "t", p.value = "p") |>
+  gtsave("lm_traits_T50_hot.docx")
 ```
-
-## Clean final visualization plot
-
-```{r}
-# plot for each trait x t50 hot. from modeled data. facet by month and trait, giving. 
-```
-
-#### EGU only LDMC plot
 
 ## COLD
 
@@ -427,7 +473,7 @@ trait_T50_cold <- trait_data_means |>
     "Newly Burnt", "Pioneer", "Building", "Mature"
   ))) |> 
    # now filter out extremely low, low_prop T50 estimates
-   filter(T50 >= -35) |> 
+   filter(T50 >= -35) |> # November building 6
    filter(!is.na(T50))  # only remove rows where T50 itself is NA
 
 ```
@@ -476,13 +522,31 @@ ldmc_vs_T50_cold
 # when NOT faceted by month: high LDMC correlates to slightly less cold tolerant leaves. not expected
 # when faceted by month: November high LDMC are more cold tolerant. Janyary almost flat relationship - NB few data points. 
 
+#dry mass
+drymass_vs_T50_cold <- ggplot(trait_T50_cold, aes(x = dry_mass_g, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "drymass", y = "T50") +
+  theme_minimal()
+
+drymass_vs_T50_cold
+
+#height 
+height_vs_T50_cold <- ggplot(trait_T50_cold, aes(x = height_s_top, y = T50)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  facet_wrap(~ month) +
+  labs(x = "height", y = "T50") +
+  theme_minimal()
+
+height_vs_T50_cold
+# taller plant, slightly more freezing tolerant
 ```
 
 ## Linear model for traits vs T50 cold
 
-UPDATE 24/4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold.
-
-R-club 24/4: Because of the very low number of predicted T50 values for January, only do the hypothesis testing on cold T50 vs traits for the November data. Take the month term out of the model. not necessary to add interactions.
+UPDATE 24/4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold. No interactions.
 
 ```{r}
 #| label: linear model cold nov
@@ -492,10 +556,18 @@ R-club 24/4: Because of the very low number of predicted T50 values for January,
 trait_T50_cold_nov <- trait_T50_cold |> filter(month == "November")
 
 # linear model for T50 nov response to triats, no interactions included
-lm_traits_T50_cold_nov <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + age_class, data = trait_T50_cold_nov) 
+lm_traits_T50_cold_nov <- lm(T50 ~ sla + leaf_thickness_mean + ldmc + dry_mass_g + age_class, data = trait_T50_cold_nov) 
+anova(lm_traits_T50_cold_nov) 
+summary(lm_traits_T50_cold_nov)
 
-anova(lm_traits_T50_cold_nov) #look at and report results
-summary(lm_traits_T50_cold_nov) # look at and report results
+#interaction model 
+lm_int_traits_T50_cold_nov <- lm(T50 ~ (sla + leaf_thickness_mean + ldmc + dry_mass_g) * age_class, data = trait_T50_cold_nov) 
+
+car::Anova(lm_int_traits_T50_cold_nov, type = "III") # order independent 
+summary(lm_int_traits_T50_cold_nov) # look at and report results
+
+AIC(lm_traits_T50_cold_nov, lm_int_traits_T50_cold_nov) # 163 vs 161
+# AIC favours the interaction model
 ```
 
 ## Checking model performance
@@ -505,14 +577,25 @@ summary(lm_traits_T50_cold_nov) # look at and report results
 #| message: false
 
 library(performance)
-check_model(lm_traits_T50_cold_nov)  # a bit better 
+check_model(lm_int_traits_T50_cold_nov) 
+# high VIF for most predictors 
 ```
 
 ```{r}
-#plot of modeled data
+#| label: cold int mod coef table 
+#| message: false
+
+tidy(lm_int_traits_T50_cold_nov, conf.int = TRUE) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  select(term, estimate, conf.low, conf.high, statistic, p.value) |>
+  gt() |>
+  cols_label(term = "Term", estimate = "Estimate",
+             conf.low = "95% CI Low", conf.high = "95% CI High",
+             statistic = "t", p.value = "p") |>
+  gtsave("lm_traits_T50_cold.docx")
 ```
 
-**EGU PLOT LDMC**
+**EGU PLOT LDMC COMBINED**
 
 ```{r}
 
@@ -591,7 +674,7 @@ ggplot() +
                                 "Winter" = purple_light)) +
   labs(
     x     = expression("LDMC (mg g"^-1*")"),
-    y     = "T50 (C)",
+    y     = "T50 (\u00b0C)",
     color = "Season",
     fill  = "Season"
   ) +
@@ -607,7 +690,7 @@ ggplot() +
 
 
 ggsave(
-  here("output", "ldmc_vs_T50_hot_cold.png"),
+  here("output", "ldmc_vs_T50_hot_cold_deg.png"),
   width = 8,
   height = 6,
   dpi = 300
@@ -621,6 +704,7 @@ ggsave(
 p_hot_age <- ggpredict(lm_traits_T50_hot,
                        terms = c("ldmc", "month", "age_class")) |>
   as.data.frame() |>
+  rename(age_class = facet) |> 
   mutate(
     group     = recode(group, "November" = "Autumn", "January" = "Winter"),
     tolerance = "Heat tolerance"
@@ -630,6 +714,7 @@ p_hot_age <- ggpredict(lm_traits_T50_hot,
 p_cold_age <- ggpredict(lm_traits_T50_cold_nov,
                         terms = c("ldmc", "age_class")) |>
   as.data.frame() |>
+  rename(age_class = group) |>  
   mutate(
     group     = "Autumn",
     tolerance = "Freezing tolerance"
@@ -670,7 +755,9 @@ raw_all <- bind_rows(raw_hot, raw_cold) |>
       "Newly Burnt", "Pioneer", "Building", "Mature"
     ))
   )
+```
 
+```{r}
 # ── Plot ───────────────────────────────────────────────────────────────────────
 #install.packages("ggnewscale")
 library(ggnewscale)
@@ -684,14 +771,20 @@ ggplot() +
                   fill = group),
               alpha = 0.2) +
   geom_line(data = combined,
-            aes(x = x, y = predicted, color = group),
+            aes(x = x, y = predicted, color = group, linetype = group),
             linewidth = 1) +
-  scale_color_manual(name = "Season",
+  scale_color_manual( 
+                     name = "Season",
                      values = c("Autumn" = purple_dark,
                                 "Winter" = purple_light)) +
-  scale_fill_manual(name = "Season",
+  scale_fill_manual(
+                    name = "Season",
                     values = c("Autumn" = purple_dark,
                                "Winter" = purple_light)) +
+  scale_linetype_manual(
+                        name = "Season", 
+            values = c("Autumn" = "solid",
+                       "Winter" = "dashed")) +
   new_scale_color() +
   new_scale_fill() +
 
@@ -707,9 +800,10 @@ ggplot() +
 geom_line(data = combined_age,
             aes(x = x, y = predicted,
                 colour = age_class,
-                group  = interaction(age_class, group)),
+                group  = interaction(age_class, group),
+                linetype  = group 
+                ),
             linewidth = 0.8,
-            linetype  = "solid",
             show.legend = FALSE) +
   
   
@@ -746,12 +840,12 @@ geom_line(data = combined_age,
 
 
 ggsave(
-  here("output", "ldmc_vs_T50_hot_cold_colour_x.png"),
+  here("output", "ldmc_vs_T50_hot_cold_colour_lines.png"),
   width = 8,
   height = 6,
   dpi = 300
 )  
 ```
 
-```{}
+```         
 ```
