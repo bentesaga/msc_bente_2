@@ -14,6 +14,7 @@ library(tidyverse)
 library(readxl)
 library(here)
 library(thermalTolerance) 
+library(broom)
 
 # remember to re-install if Richard changes package, found on github, installed using: 
 # remotes::install_github("richardjtelford/thermalTolerance") 
@@ -979,7 +980,7 @@ T50_hot <- T50_hot |>
 
 ```
 
-#### CI mean and range 
+#### CI mean and range
 
 ```{r}
 #| label: CI hot
@@ -1047,10 +1048,10 @@ anova(hot_model_interaction) #look at and report results
 summary(hot_model_interaction) # look at and report results
 
 # anova: 
-# month highly significant (p < 0.001). Hypothesis 1 supported. 
+# month highly significant (p < 0.001). Hypothesis 1 partly supported. 
 # age class is not significant (p = 0.18) 
-# month:age_class interaction is non-significant (p = 0.68). Hypothesis 3 not supported for hot. 
-# summary: T50 = 51.3 C at refrence level, jan nb
+# month:age_class interaction is non-significant (p = 0.68). Age class hypothesis not supported for hot
+# summary: T50 = 51.3 C at refrence level, nov nb
 
 ```
 
@@ -1074,10 +1075,6 @@ AIC(hot_model, hot_model_interaction)
 # need the interaction to thest H3 though, so will keep. 
 ```
 
-By both models: Hypothesis 1 is supported, month have significant effect on T50. No significant effect of age class on T50. H3 not supported.
-
-Model with interaction: No interaction between month and age_class, hypothesis 3 NOT supported.
-
 #### Checking model performance
 
 ```{r}
@@ -1086,21 +1083,27 @@ Model with interaction: No interaction between month and age_class, hypothesis 3
 
 library(performance)
 check_model(hot_model_interaction)  
-# collionearity is a problem here. 
-# the interaction term increase variance in parameter estimates, making coefficients less reliable. 
-# better to use the model with no interaction?
-
-check_model(hot_model)  
-# all panels good; except some slight deviations form whats excpected in influential observations. 
-# still within reasonable limits. 
+# high VIF 
 
 ```
 
-Results from performance model check is OK for model WITHOUT interaction. I would opt for that one as it is simpler. Need confirmation if this is ok, or if the interaction model is fine anyway.
+Results from performance model check is OK for model WITHOUT interaction. I would opt for that one as it is simpler. Need confirmation if this is ok, or if the interaction model is fine anyway. Keeping interaction term after discussion.
 
-Keeping interaction term after discussion.
+#### Export model result in a coefficient table
 
-#### Export model result in a table
+```{r}
+#| label: T50 hot lm coefficient table
+#| message: false
+
+tidy(hot_model_interaction, conf.int = TRUE) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  select(term, estimate, conf.low, conf.high, statistic, p.value) |>
+  gt() |>
+  cols_label(term = "Term", estimate = "Estimate",
+             conf.low = "95% CI Low", conf.high = "95% CI High",
+             statistic = "t", p.value = "p") |>
+  gtsave("hot_lm_coef_table.docx")
+```
 
 ### COLD
 
@@ -1135,10 +1138,6 @@ T50_cold |>
 hist(T50_cold$T50.mn, breaks = 30)
 #wide spread, some estimates far from the rest around - 40C.
 
-#CI width 
-T50_cold$CI_width <- T50_cold$T50.hi - T50_cold$T50.low
-plot(T50_cold$T50.mn, T50_cold$CI_width)
-# wide spread
 
 # testing for T50 outliers using z-scores. one detected, november building 6. 
 # check if there are more appropriate ways to detect outliers, z-scores build on normal distributions!
@@ -1176,11 +1175,11 @@ T50_cold <- T50_cold |>
                                   "Building", "Mature"))) |> 
   # add remarks before filtering
   mutate(remark = case_when(
-    T50 < -40 ~ "; outlier low prop_succes and very low T50 predicted",
+    T50 < -35 ~ "; outlier low prop_succes and very low T50 predicted",
     .default = remark
   )) |>
   # now filter out
-  filter(T50 >= -40) |> # filter out as low prop_success, and very low t50
+  filter(T50 >= -35) |> # filter out as low prop_success, and very low t50
   filter(!is.na(T50))  # only remove rows where T50 itself is NA
   
 # mean prop_ success
@@ -1240,7 +1239,7 @@ ggplot(T50_cold_grouped, aes(x = month, y = mean_T50, color = age_class, group =
 
 Very few estimates for January T50s. Only 6 individuals accross all of January got a T50. Only January_Pioneer got more than one usable individual T50, so only one with SD and SE estimation possible.
 
-Any statistical comparison between months would be very fragile. Report January result in table and run a model for November alone. Would then not be able to formally test H1 at all, and only partially test H3.
+Any statistical comparison between months would be very fragile. Report January result in table and run a model for November alone. Would then not be able to formally test H1 at all, and only partially test growth phase hypothesis.
 
 UPDATE 24.4: Confirmed that as we can not calculate viable T50 estimates for January this can not be included in the model. Remove month as predictor in the linear model for cold.
 
@@ -1272,7 +1271,21 @@ check_model(cold_model)
 #influential observations a bit weird
 ```
 
-#### Export model result in a table?
+Cold model coeficcient table
+
+```{r}
+#| label: T50 cold lm coefficient table
+#| message: false
+
+tidy(cold_model, conf.int = TRUE) |>
+  mutate(across(where(is.numeric), \(x) round(x, 3))) |>
+  select(term, estimate, conf.low, conf.high, statistic, p.value) |>
+  gt() |>
+  cols_label(term = "Term", estimate = "Estimate",
+             conf.low = "95% CI Low", conf.high = "95% CI High",
+             statistic = "t", p.value = "p") |>
+  gtsave("cold_lm_coef_table.docx")
+```
 
 ## FIGURES AND TABLES
 
@@ -1305,13 +1318,7 @@ table_combined <- bind_rows(
       .groups = "drop"
     ) |>
     mutate(tolerance = "Freezing tolerance")
-  
-  ) |>
-  mutate(
-    tolerance = factor(
-      tolerance,
-      levels = c("Heat tolerance", "Freezing tolerance")
-    )
+
   ) |>
   
   arrange(tolerance, age_class, month) |>
@@ -1326,7 +1333,7 @@ gt_table_yield <- table_combined |>
   cols_label(
     age_class         = "Age class",
     month             = "Month",
-    n_attempted       = "n attempted",
+    n_attempted       = "n attempted", # tried for all, update
     n_with_T50        = "n with T50",
     mean_prop_success = "Mean prop. success"
   ) |>
@@ -1356,20 +1363,196 @@ gt_table_yield <- table_combined |>
 # print 
 gt_table_yield
 
-# export to Word 
-gt_table_yield |> gtsave(here("output", "T50_yield_table.docx"))
+# export to word 
+dir.create("output", showWarnings = FALSE)
+
+gt_table_yield |>
+  gtsave("output/T50_yield_table.docx")
+
 ```
+
+#### Summary table mean T50 pr group
 
 ```{r}
 #| label: table of mean T50 estimates per group
 #| message: false
 
+# heat tolerance summary
+heat_summary <- T50_hot |>
+  group_by(age_class, month) |>
+  summarise(
+    mean_T50 = round(mean(T50, na.rm = TRUE), 1),
+    .groups = "drop"
+  ) |>
+  mutate(variable = paste0("Heat T50 ", month, " (C)"))
 
+# freezing tolerance summary
+cold_summary <- T50_cold |>
+  filter(month != "January") |>   # remove unreliable January estimates
+  group_by(age_class, month) |>
+  summarise(
+    mean_T50 = round(mean(T50, na.rm = TRUE), 1),
+    .groups = "drop"
+  ) |>
+  mutate(variable = paste0("Freezing T50 ", month, " (C)"))
 
+# combine and reshape
+table_T50 <- bind_rows(heat_summary, cold_summary) |>
+  select(age_class, variable, mean_T50) |>
+  pivot_wider(
+    names_from  = variable,
+    values_from = mean_T50
+  ) |>
+  arrange(age_class)
 
+# reorder columns
+table_T50 <- table_T50 |>
+  select(
+    age_class,
+    `Heat T50 November (C)`,
+    `Heat T50 January (C)`,
+    `Freezing T50 November (C)`
+  )
+
+# create gt table
+gt_table_T50 <- table_T50 |>
+  gt() |>
+  cols_label(
+    age_class = "Age class"
+  ) |>
+  tab_header(
+    title = "Table 2",
+    subtitle = "Mean T50 values by age class and month"
+  ) |>
+  tab_style(
+    style = cell_text(weight = "bold"),
+    locations = cells_column_labels()
+  ) |>
+  cols_align(
+    align = "left",
+    columns = age_class
+  ) |>
+  cols_align(
+    align = "center",
+    columns = -age_class
+  ) |>
+  opt_table_font(font = "Calibri") |>
+  opt_stylize(style = 1, color = "gray") |>
+  tab_options(
+    table.border.top.width = px(2),
+    table.border.bottom.width = px(2),
+    column_labels.border.bottom.width = px(1)
+  )
+
+# print
+gt_table_T50
+
+gt_table_T50 |>
+  gtsave("output/T50_table_mean.docx") 
+```
+
+#### Plots visualizing linear model results
+
+```{r}
+#| label: lm hot visualization 
+#| message: false
+
+library(ggeffects)
+
+# model-derived means and CIs
+model_means <- ggpredict(hot_model_interaction, 
+                         terms = c("age_class", "month")) |>
+  as.data.frame()
+
+# plot 
+ggplot(model_means, aes(x = x, y = predicted,
+                        colour = group)) +
+  
+  # raw data points (half transparent) — add before model-derived means
+geom_point(data = T50_hot,
+           aes(x = age_class, y = T50, colour = month),
+           size     = 1.8,
+           alpha    = 0.4,
+           position = position_dodge(0.4)) +
+  
+  geom_point(size = 4, position = position_dodge(0.4)) +
+  geom_errorbar(aes(ymin = conf.low, # model derived CIs added
+                    ymax = conf.high),
+                width = 0.15,
+                position = position_dodge(0.4)) +
+  scale_colour_manual(values = c("November" = "#7B2D8B",
+                                 "January"  = "#C589D8")) +
+  labs(
+    x       = "Growth phase",
+    y       = "Mean heat tolerance T50 (\u00b0C)",
+    colour  = "Month:",
+  ) +
+  theme_bw() +
+  theme(
+    legend.position  = "bottom",
+    legend.title     = element_text(face = "bold"),
+    plot.caption     = element_text(size = 16)             
+  )
+
+# save fig to output folder 
+ggsave(
+  here("output", "hot_linear_results.png"),
+  width  = 7,
+  height = 4,
+  dpi    = 300
+)
+```
+
+```{r}
+#| label: lm cold visualization 
+#| message: false
+
+# model-derived means and CIs 
+cold_means <- ggpredict(cold_model,
+                        terms = "age_class") |>
+  as.data.frame()
+
+# Plot 
+ggplot(cold_means, 
+  aes(x = x, y = predicted, colour = "November")) +
+  
+  geom_point(data = filter(T50_cold, month == "November"),
+           aes(x = age_class, y = T50, colour = month),
+           size  = 1.8,
+           alpha = 0.4) +
+  
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = conf.low,
+                    ymax = conf.high),
+                width  = 0.15) +
+  
+  scale_colour_manual(values = c("November" = "#7B2D8B")) +
+  
+  labs(
+    x       = "Growth phase",
+    y       = "Mean freezing tolerance T50 (\u00b0C)",
+    colour = "Month:"
+
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = "bottom",
+    legend.title    = element_text(face = "bold"),
+    plot.caption    = element_text(size = 16)
+  )
+
+# save fig to output folder 
+ggsave(
+  here("output", "cold_linear_results.png"),
+  width  = 7,
+  height = 4,
+  dpi    = 300
+)
 ```
 
 ### CORRELATION HEAT VS FREEZING TOLERANCE
+
+Use Spearmans coefficient over Pearsons because: T50 estimates do not need to be linear, normal and CIs do not need to be constant. Robust to skew and uncertanty. Wide CIs can however weaken observed correlations.
 
 ```{r}
 #| label: correlation T50 hot vs cold nov
@@ -1390,114 +1573,96 @@ df_joined <- T50_hot |>
 # formal test
 # spearman correlation: makes no assumptions about normality or homoscedasticity, robust to outliers
 
-cor_spearman <- cor.test(df_joined$T50_hot, df_joined$T50_cold, method = "spearman")
-
+cor_spearman <- cor.test(df_joined$T50_hot, df_joined$T50_cold, method = "spearman") #overall correlation across age calsses
 
 # November: no significant relashipnship between heat and freezing tolerance, (Spearman's ρ = -0.015, p = 0.941, n = 30)
+```
 
+#### Exploratory: Correlation between freezing vs heat tolerance 
 
-ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
-  # ── Partition lines ────────────────────────────────────────────────────────
-  geom_vline(xintercept = 51,    linetype = "dashed", linewidth = 0.3, colour = "grey50") +
-  geom_hline(yintercept = -22.5, linetype = "dashed", linewidth = 0.3, colour = "grey50") +
-  # ── Data and trend ─────────────────────────────────────────────────────────
-  geom_point(aes(shape = age_class),                   # CHANGED: shape mapped to age_class
-             size = 2, alpha = 1.2, colour = "#7B2D8B") +
-  geom_smooth(method = "lm", se = TRUE,
-              colour = "#7B2D8B", fill = "#7B2D8B",
-              linetype = "solid") +
-  
-  #facet_grid(rows=vars(age_class)) +
-  # ── Correlation label ──────────────────────────────────────────────────────
-  annotate("text",
-           x = Inf, y = Inf,
-           hjust = 1.1, vjust = 1.5,
-           label = paste0("rho = ", round(cor_spearman$estimate, 3),
-                          ", p = ", round(cor_spearman$p.value, 3)),
-           size = 4, colour = "grey20") +
-  # ── Quadrant labels ────────────────────────────────────────────────────────
-  annotate("text",
-           x = 52.2, y = -28,
-           hjust = 1, vjust = 0,
-           label = "High heat tolerance\nHigh freezing tolerance",
-           size = 4, colour = "grey30", fontface = "italic") +
-  annotate("text",
-           x = 49.5, y = -16,
-           hjust = 0, vjust = 1,
-           label = "Low heat tolerance\nLow freezing tolerance",
-           size = 4, colour = "grey30", fontface = "italic") +
-  scale_y_reverse() +
-  labs(
-    x     = "T50 heat tolerance(C)",
-    y     = "T50 freezing tolerance (C)",
-    shape = "Successional stage:"                        # CHANGED: legend title for shape
-  ) +
-  theme_bw(base_size = 14) +
-  theme(
-    strip.text      = element_text(face = "bold"),
-    legend.position = "bottom"
+Due to low sample size test has very low power, only for exploratory purposes. rho more informative than p-value here.
+
+```{r}
+#| label: correlarion T50 freezing vs heat all nov age calsses
+#| message: false
+
+cor_by_age <- df_joined |> 
+  group_by(age_class) |> 
+  summarise(
+    n = n(),
+
+    rho = cor(
+      T50_hot,
+      T50_cold,
+      method = "spearman",
+      use = "complete.obs"
+    ),
+
+    p_value = cor.test(
+      T50_hot,
+      T50_cold,
+      method = "spearman"
+    )$p.value,
+
+    .groups = "drop"
   )
 
-
-
-# save fig to output folder 
-ggsave(
-  here("output", "correlation_T50_nov_hot_cold_text_shapes_facet.png"),
-  width  = 8,
-  height = 6,
-  dpi    = 300
-)
+cor_by_age # no significant relationships detected
 
 ```
 
-Correlation plot with trend lines for each age class
+#### Correlation plot with trend lines for each age class
+
+NOTE: Tried with loess instead of lm, trendlines remined flat for all groups exept building. Keep lm approach as it makes figure easier to interpret, despite the spearmans correlation formal test is not assuming a strictly linear relationship.
 
 ```{r}
+#| label: correlarion plot
+#| message: false
 
 # Define a colour palette for age classes
 age_colours <- c(
-  "Newly Burnt" = "#D55E00",   # burnt orange
-  "Pioneer"     = "#E69F00",   # amber
-  "Building"    = "#56B4E9",   # sky blue
-  "Mature"      = "#009E73"    # teal green
+  "Newly Burnt" = "#E69F00",   # yellow
+  "Pioneer"     = "#D55E00",   # orange
+  "Building"    = "#009E73",   # green
+  "Mature"      = "#56B4E9"    # blue
 )
 
 
 ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
-  # ── Partition lines ────────────────────────────────────────────────────────
+  # partition lines 
   geom_vline(xintercept = 51,    linetype = "dashed", linewidth = 0.3, colour = "grey50") +
   geom_hline(yintercept = -22.5, linetype = "dashed", linewidth = 0.3, colour = "grey50") +
-  # ── Per-age-class trend lines ──────────────────────────────────────────────
+  # per-age-class trend lines 
   geom_smooth(aes(colour = age_class, fill = age_class),
               method = "lm", se = TRUE,
               linetype = "solid", alpha = 0.15,
               show.legend = TRUE) +
-  # ── Overall trend line (mapped to linetype for legend entry) ───────────────
+  # overall trend line (mapped to linetype for legend entry) 
   geom_smooth(aes(linetype = "Mean trendline"),
               method = "lm", se = TRUE,
               colour = "#7B2D8B", fill = "#7B2D8B",
               alpha = 0.15, linewidth = 1.2,
               show.legend = TRUE) +
-  # ── Points ─────────────────────────────────────────────────────────────────
+  # points 
   geom_point(aes(colour = age_class),
              size = 2.5, alpha = 0.9,
              show.legend = TRUE) +
   
-  # ── Correlation label ──────────────────────────────────────────────────────
+  # correlation label, main trend
   annotate("text",
            x = Inf, y = Inf,
            hjust = 1.1, vjust = 1.5,
            label = paste0("rho = ", round(cor_spearman$estimate, 3),
                           ", p = ", round(cor_spearman$p.value, 3)),
            size = 4, colour = "grey20") +
-  # ── Quadrant labels ────────────────────────────────────────────────────────
+  # quadrant labels 
   annotate("text",
            x = 52.2, y = -28,
            hjust = 1, vjust = 0,
            label = "High heat tolerance\nHigh freezing tolerance",
            size = 4.5, colour = "grey30", fontface = "italic") +
   annotate("text",
-           x = 49.5, y = -16,
+           x = 49.5, y = -14.5,
            hjust = 0, vjust = 1,
            label = "Low heat tolerance\nLow freezing tolerance",
            size = 4.5, colour = "grey30", fontface = "italic") +
@@ -1505,13 +1670,13 @@ ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
   scale_fill_manual(values = age_colours) +
   scale_linetype_manual(values = c("Mean trendline" = "dashed"),
                         name = NULL) +
-  scale_y_reverse() +
+  scale_y_reverse() + # flip y-axis
   labs(
-    title  = "Freezing vs heat tolerance (autumn)",
+    title  = "Freezing vs heat tolerance (November)",
     x      = "T50 heat tolerance (\u00b0C)",
     y      = "T50 freezing tolerance (\u00b0C)",
-    colour = "Successional stage:",
-    fill   = "Successional stage:"
+    colour = "Growth phase:",
+    fill   = "Growth phase:"
   ) +
   guides(
     colour   = guide_legend(override.aes = list(linetype = 0, fill = NA)),
@@ -1527,47 +1692,116 @@ ggplot(df_joined, aes(x = T50_hot, y = T50_cold)) +
 
 # save fig to output folder 
 ggsave(
-  here("output", "correlation_T50_nov_hot_cold_colour_by_age_no_shape_toptext.png"),
+  here("output", "correlation_T50_nov_hot_cold_thesis.png"),
   width  = 9,
   height = 6,
   dpi    = 300
 )
 ```
 
-Coefficient table
+#### Exploratory: Thermal tolerance range
 
 ```{r}
-
-# Spearman correlations: per age-class + overall table
-library(broom)
-
-spearman_by_age <- df_joined |>  
-  group_by(age_class) |>    # group by age class
-  summarise(
-    tidy(cor.test(T50_hot, T50_cold, method = "spearman")),
-    n = n(),
-    .groups = "drop"
-  ) |> 
-  select(age_class, n, estimate, p.value)
-
-spearman_results <- bind_rows(
-  spearman_by_age,
-  tidy(cor_spearman) |> 
-    mutate(age_class = "Overall",
-           n         = nrow(df_joined)) |> 
-    select(age_class, n, estimate, p.value)
-) |> 
+#| label: thermal range
+#| message: false
+# new column: hot value minus megative freezing tolerance, gives range
+df_joined <- df_joined |> 
   mutate(
-    significance = case_when(
-      p.value < 0.001 ~ "***",
-      p.value < 0.01  ~ "**",
-      p.value < 0.05  ~ "*",
-      TRUE            ~ "ns"
-    ),
-    across(c(estimate, p.value), ~ round(., 3))
+    thermal_range = T50_hot - T50_cold)
+
+# exploratory lm of differences between age classes
+lm_T50_range <- lm(thermal_range ~ age_class, data = df_joined)
+anova(lm_T50_range)
+summary(lm_T50_range)
+# no significant effect of age class, R2 = 0.11, barely explains any variation
+check_model(lm_T50_range) # ok
+
+# boxplot, lm notincluded
+ggplot(df_joined, aes(x = age_class, y = thermal_range, fill = age_class)) +
+  geom_boxplot(alpha = 0.7, outlier.alpha = 0.6) +
+  geom_jitter(width = 0.15, alpha = 0.5, size = 2) +
+  scale_fill_manual(values = age_colours) +
+  labs(
+    title = "Thermal tolerance range (November)",
+    x = "Growth phase",
+    y = "Thermal range in \u00b0C (T50 heat - T50 cold)"
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5, face = "bold")
   )
 
-print(spearman_results)
+# save fig to output folder 
+ggsave(
+  here("output", "range_T50_boxplot.png"),
+  width  = 9,
+  height = 6,
+  dpi    = 300
+)
+
+#------------
+# plot with thermal bredth as lines for each in dividual, lm not included
+ggplot(df_joined) +
+  geom_segment(
+    aes(
+      x = T50_cold,
+      xend = T50_hot,
+      y = id,
+      yend = id,
+      colour = age_class
+    ),
+    linewidth = 1
+  ) +
+  scale_colour_manual(values = age_colours) +
+  labs(
+    title = "Thermal tolerance range (November)",
+    x = "Temperature (\u00b0C)",
+    y = "Individual plant",
+    colour = "Growth phase"
+  ) +
+  theme_bw()
+
+# save fig to output folder 
+ggsave(
+  here("output", "range_T50_segment_ind.png"),
+  width  = 9,
+  height = 6,
+  dpi    = 300
+)
+#---------
+# plot with thermal bredth as lines for each age class, lm not included
+ggplot(df_joined, aes(x = T50_cold, xend = T50_hot,
+                      y = age_class, yend = age_class,
+                      colour = age_class)) +
+
+  geom_segment(linewidth = 1, alpha = 0.8) +
+
+  geom_point(aes(x = T50_cold), size = 2, alpha = 0.7) +
+  geom_point(aes(x = T50_hot), size = 2, alpha = 0.7) +
+
+  scale_colour_manual(values = age_colours) +
+
+  labs(
+    title = "Thermal tolerance range by growth phase (November)",
+    x = "Temperature (\u00b0C)",
+    y = "Growth phase",
+    colour = "Growth phase"
+  ) +
+
+  theme_bw() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "none"
+  )
+
+# save fig to output folder 
+ggsave(
+  here("output", "range_T50_segment_group.png"),
+  width  = 9,
+  height = 6,
+  dpi    = 300
+)
 ```
 
 #### Plot response curves and T50 for EGU and thesis
